@@ -7,7 +7,7 @@
   <file name="${this_dir}/src/Windows.cpp"/>
   <file name="${this_dir}/src/WindowsAppearance.cpp"/>
   <file name="${this_dir}/src/Linux.cpp"/>
-  <file name="${this_dir}/src/Mac.mm" if="mac"/>
+  <file name="${this_dir}/src/Mac.mm" if="mac||macos"/>
   <depend name="${this_dir}/include/native_desktop/Desktop.h"/>
   <depend name="${this_dir}/include/native_desktop/WindowsAppearance.h" if="windows"/>
  </files>

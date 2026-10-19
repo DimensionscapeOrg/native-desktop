@@ -6,6 +6,7 @@ env:
   HAXE_VERSION: 4.2.5
 jobs:
   native-desktop:
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -28,7 +29,11 @@ jobs:
           git archive --format=zip --output=native-desktop.zip HEAD
           haxelib install native-desktop.zip --quiet
           haxe tests/menu.hxml
-          haxe tests/smoke.hxml
+          if [ "$RUNNER_ARCH" = "ARM64" ]; then
+            haxe tests/smoke.hxml -D HXCPP_ARM64
+          else
+            haxe tests/smoke.hxml
+          fi
           if [ "$RUNNER_OS" = "Windows" ]; then
             tests/bin/smoke/Smoke.exe
           else
