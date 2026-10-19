@@ -56,6 +56,9 @@ It owns menu state only, and never destroys the host window. `Desktop` also
 provides application and Dock menus where supported. Query `menuSupport` for
 popup (1), window (2) and application (4) capabilities.
 
+Pass borrowed handles as `cpp.Pointer<cpp.Void>`; use `cpp.Pointer.fromRaw` to wrap
+a raw pointer. The wrapper does not transfer ownership of the native handle.
+
 Windows uses Shell_NotifyIcon and Win32 menus, including Explorer restart
 recovery. macOS uses AppKit. Linux dynamically loads GTK 3 and Ayatana AppIndicator
 (or legacy AppIndicator); desktop support and installed libraries determine tray

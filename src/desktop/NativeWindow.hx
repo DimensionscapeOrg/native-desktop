@@ -14,13 +14,15 @@ class NativeWindow {
 	var native:cpp.RawPointer<cpp.Void>;
 	var id:Int;
 	var commands:Array<MenuItem> = [];
-	public function new(handle:cpp.RawPointer<cpp.Void>, ?display:cpp.RawPointer<cpp.Void>, x:Int = 0, y:Int = 0) {
+	public function new(handle:cpp.Pointer<cpp.Void>, ?display:cpp.Pointer<cpp.Void>, x:Int = 0, y:Int = 0) {
 		Desktop.checkThread();
 		if (handle == null) throw "A native window handle is required";
+		var rawHandle = handle.raw;
+		var rawDisplay:cpp.RawPointer<cpp.Void> = display == null ? null : display.raw;
 		id = ++nextID;
 		native = untyped __cpp__("(void*)(new native_desktop::Window())");
-		untyped __cpp__("((native_desktop::Window*){0})->handle = {1}", native, handle);
-		untyped __cpp__("((native_desktop::Window*){0})->display = {1}", native, display);
+		untyped __cpp__("((native_desktop::Window*){0})->handle = {1}", native, rawHandle);
+		untyped __cpp__("((native_desktop::Window*){0})->display = {1}", native, rawDisplay);
 		untyped __cpp__("((native_desktop::Window*){0})->id = {1}", native, id);
 		setPosition(x, y); windows.set(id, this);
 	}

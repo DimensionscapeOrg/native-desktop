@@ -35,7 +35,7 @@ class Smoke {
 		if (!modalErrorReported) throw "A modal callback error was lost";
   #if windows
   var handle:cpp.RawPointer<cpp.Void> = untyped __cpp__('(void*)CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200, NULL, NULL, GetModuleHandleW(NULL), NULL)');
-  var window = new NativeWindow(handle);
+  var window = new NativeWindow(cpp.Pointer.fromRaw(handle));
   if (!window.setMenu(menu)) throw "Window menu was not installed";
   untyped __cpp__('SendMessageW((HWND){0}, WM_COMMAND, MAKEWPARAM(0x1001, 0), 0)', handle);
   Desktop.poll(); if (!selected) throw "Native selection did not reach Haxe";
