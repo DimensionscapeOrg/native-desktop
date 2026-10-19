@@ -24,7 +24,7 @@ jobs:
       - name: Build standalone Haxe bindings
         shell: bash
         run: |
-          haxelib install hxcpp 4.3.53 --quiet
+          haxelib install hxcpp 4.3.2 --quiet
           git archive --format=zip --output=native-desktop.zip HEAD
           haxelib install native-desktop.zip --quiet
           haxe tests/menu.hxml
