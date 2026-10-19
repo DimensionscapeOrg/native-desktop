@@ -13,6 +13,6 @@
   <lib name="-luser32" if="mingw"/><lib name="-lshell32" if="mingw"/>
   <lib name="-lgdi32" if="mingw"/><lib name="-lcomctl32" if="mingw"/><lib name="-ladvapi32" if="mingw"/>
   <lib name="-ldl" if="linux"/>
-  <lib name="-framework Cocoa" if="mac||macos"/>
+  <vflag name="-framework" value="Cocoa" if="mac||macos"/>
  </target>
 </xml>
