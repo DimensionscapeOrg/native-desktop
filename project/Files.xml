@@ -1,0 +1,14 @@
+<xml>
+ <pragma once="true"/>
+ <files id="native-desktop">
+  <compilerflag value="-I${this_dir}/include"/>
+  <file name="${this_dir}/src/Desktop.cpp"/>
+  <file name="${this_dir}/src/MenuData.cpp"/>
+  <file name="${this_dir}/src/Windows.cpp"/>
+  <file name="${this_dir}/src/WindowsAppearance.cpp"/>
+  <file name="${this_dir}/src/Linux.cpp"/>
+  <file name="${this_dir}/src/Mac.mm" if="mac"/>
+  <depend name="${this_dir}/include/native_desktop/Desktop.h"/>
+  <depend name="${this_dir}/include/native_desktop/WindowsAppearance.h" if="windows"/>
+ </files>
+</xml>

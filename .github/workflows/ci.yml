@@ -1,0 +1,35 @@
+name: CI
+on: [push, pull_request]
+permissions:
+  contents: read
+env:
+  HAXE_VERSION: 4.2.5
+jobs:
+  native-desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-22.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build native desktop without Lime or SDL
+        run: |
+          cmake -S . -B native-desktop-build -DBUILD_TESTING=ON
+          cmake --build native-desktop-build --config Debug
+          ctest --test-dir native-desktop-build -C Debug --output-on-failure
+      - uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+      - name: Build standalone Haxe bindings
+        shell: bash
+        run: |
+          haxelib install hxcpp 4.3.53 --quiet
+          haxelib dev native-desktop "$PWD"
+          haxe tests/menu.hxml
+          haxe tests/smoke.hxml
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            tests/bin/smoke/Smoke.exe
+          else
+            tests/bin/smoke/Smoke
+          fi

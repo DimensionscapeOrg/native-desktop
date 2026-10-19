@@ -1,0 +1,18 @@
+<xml>
+ <pragma once="true"/>
+ <set name="HXCPP_CPP11" value="1"/>
+ <files id="haxe"><compilerflag value="-I${this_dir}/include"/></files>
+ <include name="${this_dir}/Files.xml"/>
+ <target id="haxe">
+  <files id="native-desktop"/>
+  <lib name="user32.lib" if="windows" unless="mingw"/>
+  <lib name="shell32.lib" if="windows" unless="mingw"/>
+  <lib name="gdi32.lib" if="windows" unless="mingw"/>
+  <lib name="comctl32.lib" if="windows" unless="mingw"/>
+  <lib name="advapi32.lib" if="windows" unless="mingw"/>
+  <lib name="-luser32" if="mingw"/><lib name="-lshell32" if="mingw"/>
+  <lib name="-lgdi32" if="mingw"/><lib name="-lcomctl32" if="mingw"/><lib name="-ladvapi32" if="mingw"/>
+  <lib name="-ldl" if="linux"/>
+  <lib name="-framework Cocoa" if="mac"/>
+ </target>
+</xml>

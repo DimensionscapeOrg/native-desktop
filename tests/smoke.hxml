@@ -1,0 +1,5 @@
+-lib native-desktop
+-cp tests
+-main Smoke
+-D HXCPP_M64
+-cpp tests/bin/smoke
