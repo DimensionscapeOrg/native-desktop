@@ -25,7 +25,8 @@ jobs:
         shell: bash
         run: |
           haxelib install hxcpp 4.3.53 --quiet
-          haxelib dev native-desktop "$PWD"
+          git archive --format=zip --output=native-desktop.zip HEAD
+          haxelib install native-desktop.zip --quiet
           haxe tests/menu.hxml
           haxe tests/smoke.hxml
           if [ "$RUNNER_OS" = "Windows" ]; then

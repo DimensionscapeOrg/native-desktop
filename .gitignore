@@ -1,2 +1,4 @@
 tests/bin/
 tests/*.log
+/native-desktop.zip
+/native-desktop-build/
