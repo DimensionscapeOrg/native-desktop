@@ -170,7 +170,9 @@ static LRESULT CALLBACK MenuAppearanceProc (HWND window, UINT message, WPARAM wP
 			HGDIOBJ previous = SelectObject (dc, font ? font : GetStockObject (DEFAULT_GUI_FONT));
 			RECT bounds = {};
 			DrawTextW (dc, item->text.c_str (), (int)item->text.size (), &bounds, DT_CALCRECT | DT_SINGLELINE | DT_EXPANDTABS);
-			measure->itemWidth = bounds.right + MenuScale (window, item->bar ? 16 : 72);
+			// Windows adds the menu-bar spacing to the owner-measured text width.
+			// Popup rows own their checkmark/shortcut/submenu gutters instead.
+			measure->itemWidth = bounds.right + (item->bar ? 0 : MenuScale (window, 72));
 			measure->itemHeight = item->separator ? MenuScale (window, 9) : (bounds.bottom + MenuScale (window, item->bar ? 6 : 10));
 			SelectObject (dc, previous);
 			if (font) DeleteObject (font);
@@ -204,9 +206,9 @@ static LRESULT CALLBACK MenuAppearanceProc (HWND window, UINT message, WPARAM wP
 				SelectObject (draw->hDC, font ? font : GetStockObject (DEFAULT_GUI_FONT));
 				SetBkMode (draw->hDC, TRANSPARENT);
 				SetTextColor (draw->hDC, color);
-				text.left += item->bar ? MenuScale (window, 8) : gutter;
-				text.right -= item->bar ? MenuScale (window, 8) : gutter;
-				UINT flags = DT_SINGLELINE | DT_VCENTER | ((draw->itemState & ODS_NOACCEL) ? DT_HIDEPREFIX : 0);
+				if (!item->bar) { text.left += gutter; text.right -= gutter; }
+				UINT flags = DT_SINGLELINE | DT_VCENTER | (item->bar ? DT_CENTER : 0)
+					| ((draw->itemState & ODS_NOACCEL) ? DT_HIDEPREFIX : 0);
 				size_t tab = item->text.find (L'\t');
 				DrawTextW (draw->hDC, item->text.c_str (), (int)(tab == std::wstring::npos ? item->text.size () : tab), &text, flags);
 				if (tab != std::wstring::npos) DrawTextW (draw->hDC, item->text.c_str () + tab + 1, -1, &text, flags | DT_RIGHT | DT_NOPREFIX);

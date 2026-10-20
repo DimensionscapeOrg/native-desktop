@@ -9,6 +9,39 @@
 #include <oleacc.h>
 #include <iostream>
 using namespace native_desktop;
+
+static void CheckBarLabel (HWND window, int index, const RECT& nativeBounds) {
+ HMENU bar = GetMenu (window);
+ RECT bounds = {};
+ assert (GetMenuItemRect (window, bar, index, &bounds));
+ int width = bounds.right - bounds.left, height = bounds.bottom - bounds.top;
+ // Changing appearance must preserve native menu-bar spacing and hit rectangles.
+ assert (width == nativeBounds.right - nativeBounds.left);
+ assert (height == nativeBounds.bottom - nativeBounds.top);
+ MENUITEMINFOW info = {}; info.cbSize = sizeof (info); info.fMask = MIIM_DATA;
+ assert (GetMenuItemInfoW (bar, index, TRUE, &info));
+ HDC dc = CreateCompatibleDC (NULL);
+ HBITMAP bitmap = CreateBitmap (width, height, 1, 32, NULL);
+ HGDIOBJ previous = SelectObject (dc, bitmap);
+ // Render through the same owner-draw message used by the real menu bar.
+ DRAWITEMSTRUCT draw = {}; draw.CtlType = ODT_MENU; draw.itemData = info.dwItemData;
+ draw.hDC = dc; draw.hwndItem = (HWND)bar; draw.itemState = ODS_NOACCEL;
+ SetRect (&draw.rcItem, 0, 0, width, height);
+ assert (SendMessageW (window, WM_DRAWITEM, 0, (LPARAM)&draw));
+ int left = width, right = -1;
+ for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+  COLORREF pixel = GetPixel (dc, x, y);
+  if (GetRValue (pixel) > 100 && GetGValue (pixel) > 100 && GetBValue (pixel) > 100) {
+   if (x < left) left = x;
+   if (x > right) right = x;
+  }
+ }
+ assert (right >= left);
+ // Glyph side bearings may differ by a pixel; labels should still look centered.
+ assert (abs (left - (width - 1 - right)) <= 3);
+ SelectObject (dc, previous); DeleteObject (bitmap); DeleteDC (dc);
+}
+
 static int InspectMenuAppearance (HWND window, int operation) {
  HMENU bar = window ? GetMenu (window) : NULL;
  HMENU menu = bar ? GetSubMenu (bar, 0) : NULL;
@@ -76,21 +109,27 @@ int main () {
  assert (handle);
  Window window; window.handle = handle; window.id = 1;
  std::vector<unsigned char> data;
- Integer (data, 1); Item (data, 1, MENU_ITEM_ENABLED | MENU_ITEM_SUBMENU, "&File");
+ Integer (data, 2); Item (data, 1, MENU_ITEM_ENABLED | MENU_ITEM_SUBMENU, "&File");
  Integer (data, 3);
  Item (data, 2, MENU_ITEM_ENABLED | MENU_ITEM_CHECKED, "&Open");
  Item (data, 3, MENU_ITEM_SEPARATOR, "");
  Item (data, 4, 0, "Disabled");
+ Item (data, 5, MENU_ITEM_ENABLED | MENU_ITEM_SUBMENU, "&Settings");
+ Integer (data, 1); Item (data, 6, MENU_ITEM_ENABLED, "Preferences");
  assert (Menu::SetWindowMenu (&window, data.data (), (int)data.size ()));
  SetWindowsMenuAppearance (handle, 1);
+ RECT nativeBarBounds[2] = {};
+ for (int i = 0; i < 2; ++i) assert (GetMenuItemRect (handle, GetMenu (handle), i, &nativeBarBounds[i]));
  assert (InspectMenuAppearance (handle, 0) == 0);
  SetWindowsMenuAppearance (handle, 2);
  HIGHCONTRASTW contrast = {}; contrast.cbSize = sizeof(contrast);
  bool highContrast = SystemParametersInfoW (SPI_GETHIGHCONTRAST, sizeof(contrast), &contrast, 0) && (contrast.dwFlags & HCF_HIGHCONTRASTON);
  assert (InspectMenuAppearance (handle, 0) == (highContrast ? 0 : 1));
  if (!highContrast) {
+  for (int i = 0; i < 2; ++i) CheckBarLabel (handle, i, nativeBarBounds[i]);
   // Accessible names, mnemonics, measurement, drawing and system notifications.
   for (int operation : {1, 2, 3, 4, 6}) assert (InspectMenuAppearance (handle, operation) == 1);
+  for (int i = 0; i < 2; ++i) CheckBarLabel (handle, i, nativeBarBounds[i]);
   assert (InspectMenuAppearance (handle, 7) == 0x202020);
  }
  assert (InspectMenuAppearance (handle, 5) == 1);

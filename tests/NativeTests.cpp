@@ -90,7 +90,12 @@ int main () {
  assert (!Menu::PollEvent (&event));
  DestroyWindow (handle); UnregisterClassW (type.lpszClassName, instance);
  for (int i = 0; i < 20; ++i) { TrayIcon icon; icon.SetTooltip ("Native desktop test"); icon.Close (); icon.Close (); }
- assert (!FindWindowW (L"NativeDesktopTrayIconWindow", NULL));
+ // Other applications may use this library too. Only this process owns these icons.
+ HWND tray = NULL;
+ while ((tray = FindWindowExW (NULL, tray, L"NativeDesktopTrayIconWindow", NULL)) != NULL) {
+  DWORD process = 0; GetWindowThreadProcessId (tray, &process);
+  assert (process != GetCurrentProcessId ());
+ }
 #endif
  std::cout << "Native menu decoding, ownership, event delivery and lifecycle passed\n";
 }

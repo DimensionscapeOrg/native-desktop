@@ -1,11 +1,11 @@
 {
  "name": "native-desktop",
- "version": "1.0.0",
+ "version": "1.0.1",
  "url": "https://github.com/DimensionscapeOrg/native-desktop",
  "license": "MIT",
  "classPath": "src",
  "contributors": ["Dimensionscape"],
  "description": "Native desktop menus and tray icons, independent of application and rendering frameworks.",
  "tags": ["native", "desktop", "menu", "tray", "cpp"],
- "releasenote": "Native menus, tray icons and Dock menus for Windows, macOS and Linux, with standalone C++ and Haxe bindings."
+ "releasenote": "Fix Windows dark menu-bar label spacing and alignment. Add regression coverage for native item widths and rendered text centering."
 }
