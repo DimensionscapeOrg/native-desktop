@@ -1,11 +1,11 @@
 {
  "name": "native-desktop",
- "version": "1.0.1",
+ "version": "1.1.0",
  "url": "https://github.com/DimensionscapeOrg/native-desktop",
  "license": "MIT",
  "classPath": "src",
  "contributors": ["Dimensionscape"],
  "description": "Native desktop menus and tray icons, independent of application and rendering frameworks.",
  "tags": ["native", "desktop", "menu", "tray", "cpp"],
- "releasenote": "Fix Windows dark menu-bar label spacing and alignment. Add regression coverage for native item widths and rendered text centering."
+ "releasenote": "Read the macOS menu bar back with Desktop.getApplicationMenu(), and keep its standard items, Services and Window menus working when a copy is installed."
 }
