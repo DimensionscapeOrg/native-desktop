@@ -394,7 +394,7 @@ namespace native_desktop {
 			[menuItem setState:(item.flags & MENU_ITEM_CHECKED) ? NSControlStateValueOn : NSControlStateValueOff];
 
 			// Standard items of the menu bar keep doing what they do on the default one
-			NSString* systemAction = (!item.action.empty () && action == @selector(selectApplicationMenuItem:)) ? GetString (item.action) : nil;
+			NSString* systemAction = nil;
 
 			if (systemAction) {
 
