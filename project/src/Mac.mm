@@ -504,8 +504,6 @@ namespace native_desktop {
 
 				// The menus that macOS fills go back with the menu bar that holds them
 				[NSApp setMainMenu:defaultApplicationMenu];
-				MoveServicesMenu (defaultServicesItem);
-				[NSApp setWindowsMenu:defaultWindowsMenu];
 				return true;
 
 			}
