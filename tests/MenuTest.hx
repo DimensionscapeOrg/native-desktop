@@ -31,6 +31,23 @@ class MenuTest {
 		item.enabled = false;
 		for (id in [0, 1, 2, 3, 5]) @:privateAccess Menu.select(commands, id);
 		check(calls == 1, "Invalid, disabled, separator and submenu commands do not invoke callbacks");
+		var bar = new Menu();
+		var application = new Menu();
+		var quit = application.add(new MenuItem("Quit"));
+		quit.keyCode = 113; quit.keyModifiers = 0x0c00; quit.action = "terminate:";
+		application.addSubmenu("Services", new Menu()).action = "services";
+		application.addSeparator();
+		application.add(new MenuItem("Q&&A"));
+		bar.addSubmenu("App", application);
+		var copy = @:privateAccess Menu.decode(@:privateAccess bar.encode([]));
+		var copyApplication = copy.items[0].submenu;
+		check(copy.items.length == 1 && copy.items[0].label == "App" && copy.items[0].action == null, "Decoded menu bar");
+		check(copyApplication.items.length == 4 && copyApplication.items[0].label == "Quit", "Decoded application menu");
+		check(copyApplication.items[0].action == "terminate:" && copyApplication.items[0].keyCode == 113
+			&& copyApplication.items[0].keyModifiers == 0x0c00, "Standard item keeps its action and key");
+		check(copyApplication.items[1].action == "services" && copyApplication.items[1].submenu.items.length == 0, "Services submenu");
+		check(copyApplication.items[2].separator && copyApplication.items[3].label == "Q&&A" && copyApplication.items[3].action == null,
+			"Separator, escaped label and the application's own item");
 		var recursive = new Menu();
 		recursive.addSubmenu("Loop", recursive);
 		var rejected = false;
@@ -42,6 +59,6 @@ class MenuTest {
 		rejected = false;
 		try { @:privateAccess deep.encode([]); } catch (_:Dynamic) rejected = true;
 		check(rejected, "Excessive nesting rejected");
-		Sys.println("ok: Haxe menu encoding, command dispatch and validation");
+		Sys.println("ok: Haxe menu encoding, decoding, command dispatch and validation");
 	}
 }

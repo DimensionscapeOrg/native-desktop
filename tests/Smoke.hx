@@ -33,6 +33,24 @@ class Smoke {
 		try Desktop.poll() catch (_:Dynamic) modalErrorReported = true;
 		Desktop.onModalTick = null;
 		if (!modalErrorReported) throw "A modal callback error was lost";
+  // Plain Haxe does not define the host system, so it is checked as the test runs
+  if (Sys.systemName() == "Mac") {
+  // The installed menu bar reads back, standard items with their actions
+  var bar = new Menu();
+  var application = new Menu();
+  var quit = application.add(new MenuItem("Quit Smoke")); quit.keyCode = 113; quit.keyModifiers = 0x0c00; quit.action = "terminate:";
+  application.add(new MenuItem("Open", () -> selected = true));
+  bar.addSubmenu("Smoke", application);
+  if (!Desktop.setApplicationMenu(bar)) throw "Application menu was not installed";
+  var copy = Desktop.getApplicationMenu();
+  if (copy == null || copy.items.length != 1) throw "Installed menu bar did not read back";
+  var copied = copy.items[0].submenu.items;
+  if (copied.length != 2 || copied[0].label != "Quit Smoke" || copied[0].action != "terminate:" || copied[0].keyCode != 113
+   || copied[0].keyModifiers != 0x0c00) throw "Quit did not keep its action and key";
+  if (copied[1].label != "Open" || copied[1].action != null) throw "The application's own item read back as a standard one";
+  Desktop.setApplicationMenu(null);
+  Sys.println("ok: application menu bar read back with standard items");
+  } else if (Desktop.getApplicationMenu() != null) throw "An application menu bar was read where there is none";
   #if windows
   var handle:cpp.RawPointer<cpp.Void> = untyped __cpp__('(void*)CreateWindowExW(0, L"STATIC", L"", WS_OVERLAPPEDWINDOW, 0, 0, 320, 200, NULL, NULL, GetModuleHandleW(NULL), NULL)');
   var window = new NativeWindow(cpp.Pointer.fromRaw(handle));

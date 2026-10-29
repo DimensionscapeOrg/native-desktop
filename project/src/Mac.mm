@@ -44,6 +44,7 @@
 - (void)selectApplicationMenuItem:(NSMenuItem*)sender;
 - (void)selectDockMenuItem:(NSMenuItem*)sender;
 - (void)selectPopupMenuItem:(NSMenuItem*)sender;
+- (void)selectSystemMenuItem:(NSMenuItem*)sender;
 - (void)selectTrayIconMenuItem:(NSMenuItem*)sender;
 
 @end
@@ -93,6 +94,16 @@
 
 }
 
+- (void)selectSystemMenuItem:(NSMenuItem*)sender {
+
+	// A standard item, such as Quit. The host hears of it, then AppKit does what it does.
+	native_desktop::Menu::PushSelection (0, (int)[sender tag]);
+
+	id action = [sender representedObject];
+	if ([action isKindOfClass:[NSString class]]) [NSApp sendAction:NSSelectorFromString (action) to:nil from:sender];
+
+}
+
 - (void)selectTrayIconMenuItem:(NSMenuItem*)sender {
 
 	// Tray icon menu items carry the tray icon ID in the high 32 bits of their tag
@@ -128,7 +139,13 @@ namespace native_desktop {
 	// installed by the host before this library takes ownership.
 
 	static NSMenu* defaultApplicationMenu = nil;
+	static NSMenuItem* defaultServicesItem = nil;
+	static NSMenu* defaultWindowsMenu = nil;
 	static bool defaultApplicationMenuSaved = false;
+
+	// The menus that macOS fills, named as the action of the item that holds them
+	static NSString* const SERVICES_MENU = @"services";
+	static NSString* const WINDOWS_MENU = @"windows";
 	static NativeDesktopMenuTarget* menuTarget = nil;
 
 
@@ -210,6 +227,61 @@ namespace native_desktop {
 	}
 
 
+	static int GetKeyCode (NSString* keyEquivalent, NSUInteger* modifierMask) {
+
+		if ([keyEquivalent length] != 1) return 0;
+
+		unichar character = [keyEquivalent characterAtIndex:0];
+
+		// An uppercase key equivalent implies Shift
+		if (character >= 'A' && character <= 'Z') {
+
+			*modifierMask |= NSEventModifierFlagShift;
+			return character - 'A' + 'a';
+
+		}
+
+		if (character >= 0x20 && character < 0x7F) return character;
+		if (character >= NSF1FunctionKey && character <= NSF12FunctionKey) return KEY_F1 + (character - NSF1FunctionKey);
+		if (character >= NSF13FunctionKey && character <= NSF24FunctionKey) return KEY_F13 + (character - NSF13FunctionKey);
+
+		switch (character) {
+
+			case NSBackspaceCharacter: case 0x7F: return KEY_BACKSPACE;
+			case NSTabCharacter: return KEY_TAB;
+			case NSCarriageReturnCharacter: return KEY_RETURN;
+			case 0x1B: return KEY_ESCAPE;
+			case NSDeleteFunctionKey: return KEY_DELETE;
+			case NSHomeFunctionKey: return KEY_HOME;
+			case NSEndFunctionKey: return KEY_END;
+			case NSPageUpFunctionKey: return KEY_PAGEUP;
+			case NSPageDownFunctionKey: return KEY_PAGEDOWN;
+			case NSInsertFunctionKey: return KEY_INSERT;
+			case NSLeftArrowFunctionKey: return KEY_LEFT;
+			case NSRightArrowFunctionKey: return KEY_RIGHT;
+			case NSUpArrowFunctionKey: return KEY_UP;
+			case NSDownArrowFunctionKey: return KEY_DOWN;
+			default: return 0;
+
+		}
+
+	}
+
+
+	static int GetKeyModifiers (NSUInteger modifierMask) {
+
+		int keyModifiers = 0;
+
+		if (modifierMask & NSEventModifierFlagCommand) keyModifiers |= MOD_GUI;
+		if (modifierMask & NSEventModifierFlagShift) keyModifiers |= MOD_SHIFT;
+		if (modifierMask & NSEventModifierFlagOption) keyModifiers |= MOD_ALT;
+		if (modifierMask & NSEventModifierFlagControl) keyModifiers |= MOD_CTRL;
+
+		return keyModifiers;
+
+	}
+
+
 	static NSImage* CreateImage (Image* imageBuffer) {
 
 		if (!imageBuffer || !imageBuffer->Valid ()) {
@@ -239,6 +311,40 @@ namespace native_desktop {
 		NSImage* image = DESKTOP_AUTORELEASE ([[NSImage alloc] initWithSize:NSMakeSize (width, height)]);
 		[image addRepresentation:bitmap];
 		return image;
+
+	}
+
+
+	static NSMenuItem* FindItemWithSubmenu (NSMenu* menu, NSMenu* submenu) {
+
+		for (NSMenuItem* item in [menu itemArray]) {
+
+			if (![item hasSubmenu]) continue;
+			if ([item submenu] == submenu) return item;
+
+			NSMenuItem* found = FindItemWithSubmenu ([item submenu], submenu);
+			if (found) return found;
+
+		}
+
+		return nil;
+
+	}
+
+
+	// AppKit only takes the Services menu the first time it is set, so the menu that
+	// it fills moves to the item of each menu bar that holds it
+	static bool MoveServicesMenu (NSMenuItem* destination) {
+
+		NSMenu* services = [NSApp servicesMenu];
+		if (!services || !destination) return false;
+
+		NSMenu* parent = [services supermenu];
+		NSInteger index = parent ? [parent indexOfItemWithSubmenu:services] : -1;
+		if (index >= 0) [[parent itemAtIndex:index] setSubmenu:nil];
+
+		[destination setSubmenu:services];
+		return true;
 
 	}
 
@@ -287,11 +393,28 @@ namespace native_desktop {
 			[menuItem setEnabled:(item.flags & MENU_ITEM_ENABLED) != 0];
 			[menuItem setState:(item.flags & MENU_ITEM_CHECKED) ? NSControlStateValueOn : NSControlStateValueOff];
 
-			if (hasSubmenu) {
+			// Standard items of the menu bar keep doing what they do on the default one
+			NSString* systemAction = (!item.action.empty () && action == @selector(selectApplicationMenuItem:)) ? GetString (item.action) : nil;
+
+			if (systemAction) {
+
+				[menuItem setRepresentedObject:systemAction];
+				if (!hasSubmenu) [menuItem setAction:@selector(selectSystemMenuItem:)];
+
+			}
+
+			// The Services menu that macOS already fills moves here, other submenus are built
+			bool movedServices = hasSubmenu && [systemAction isEqualToString:SERVICES_MENU] && MoveServicesMenu (menuItem);
+
+			if (hasSubmenu && !movedServices) {
 
 				NSMenu* submenu = CreateMenu (title);
 				AppendMenuItems (submenu, item.submenu, action, tagBase);
 				[menuItem setSubmenu:submenu];
+
+				// The first Services menu is registered; macOS fills both of these
+				if ([systemAction isEqualToString:SERVICES_MENU]) [NSApp setServicesMenu:submenu];
+				else if ([systemAction isEqualToString:WINDOWS_MENU]) [NSApp setWindowsMenu:submenu];
 
 			}
 
@@ -371,13 +494,18 @@ namespace native_desktop {
 			if (!defaultApplicationMenuSaved) {
 
 				defaultApplicationMenu = DESKTOP_RETAIN ([NSApp mainMenu]);
+				defaultServicesItem = DESKTOP_RETAIN (FindItemWithSubmenu ([NSApp mainMenu], [NSApp servicesMenu]));
+				defaultWindowsMenu = DESKTOP_RETAIN ([NSApp windowsMenu]);
 				defaultApplicationMenuSaved = true;
 
 			}
 
 			if (!data || length <= 0) {
 
+				// The menus that macOS fills go back with the menu bar that holds them
 				[NSApp setMainMenu:defaultApplicationMenu];
+				MoveServicesMenu (defaultServicesItem);
+				[NSApp setWindowsMenu:defaultWindowsMenu];
 				return true;
 
 			}
@@ -390,6 +518,107 @@ namespace native_desktop {
 			AppendMenuItems (menu, items, @selector(selectApplicationMenuItem:), 0);
 
 			[NSApp setMainMenu:menu];
+			return true;
+
+		}
+
+	}
+
+
+	static std::string GetLabelText (NSString* title) {
+
+		// Titles do not have mnemonics, so ampersands are escaped
+		const char* text = title ? [title UTF8String] : NULL;
+		std::string label;
+
+		for (; text && *text; text++) {
+
+			label += *text;
+			if (*text == '&') label += '&';
+
+		}
+
+		return label;
+
+	}
+
+
+	static bool ReadMenuItems (NSMenu* menu, std::vector<MenuItem>* items, int* nextID, int depth) {
+
+		if (depth > 32) return false;
+
+		for (NSMenuItem* menuItem in [menu itemArray]) {
+
+			// The Window menu also lists the open windows, which macOS adds and removes
+			if ([menuItem action] == @selector(makeKeyAndOrderFront:)) continue;
+			if (*nextID > 0xEFFF) return false;
+
+			MenuItem item = MenuItem ();
+			item.id = (*nextID)++;
+
+			NSMenu* submenu = [menuItem hasSubmenu] ? [menuItem submenu] : nil;
+			id represented = [menuItem representedObject];
+			NSString* systemAction = nil;
+
+			// Items that a host's own target handles are the host's, and have no action here
+			if ([menuItem action] == @selector(selectSystemMenuItem:) && [represented isKindOfClass:[NSString class]]) {
+
+				systemAction = represented;
+
+			} else if (submenu && submenu == [NSApp servicesMenu]) {
+
+				systemAction = SERVICES_MENU;
+
+			} else if (submenu && submenu == [NSApp windowsMenu]) {
+
+				systemAction = WINDOWS_MENU;
+
+			} else if (!submenu && [menuItem action] && ([menuItem target] == nil || [menuItem target] == NSApp)) {
+
+				systemAction = NSStringFromSelector ([menuItem action]);
+
+			}
+
+			NSUInteger modifierMask = [menuItem keyEquivalentModifierMask];
+			item.keyCode = submenu ? 0 : GetKeyCode ([menuItem keyEquivalent], &modifierMask);
+			item.keyModifiers = item.keyCode ? GetKeyModifiers (modifierMask) : 0;
+
+			item.flags = ([menuItem isEnabled] ? MENU_ITEM_ENABLED : 0)
+				| ([menuItem state] == NSControlStateValueOn ? MENU_ITEM_CHECKED : 0)
+				| ([menuItem isSeparatorItem] ? MENU_ITEM_SEPARATOR : 0)
+				| (submenu ? MENU_ITEM_SUBMENU : 0);
+
+			if (![menuItem isSeparatorItem]) item.label = GetLabelText ([menuItem title]);
+			if (systemAction) item.action = [systemAction UTF8String];
+
+			// macOS fills the Services menu itself
+			if (submenu && ![systemAction isEqualToString:SERVICES_MENU] && !ReadMenuItems (submenu, &item.submenu, nextID, depth + 1)) {
+
+				return false;
+
+			}
+
+			items->push_back (item);
+
+		}
+
+		return true;
+
+	}
+
+
+	bool Menu::GetApplicationMenu (std::vector<unsigned char>* data) {
+		if (!Menu::IsOwnerThread () || !pthread_main_np () || !data || !NSApp) return false;
+
+		@autoreleasepool {
+
+			NSMenu* menu = [NSApp mainMenu];
+			std::vector<MenuItem> items;
+			int nextID = 1;
+
+			if (!menu || !ReadMenuItems (menu, &items, &nextID, 0)) return false;
+
+			Write (items, data);
 			return true;
 
 		}

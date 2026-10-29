@@ -71,6 +71,8 @@ const char* Menu::KeyName (int key) {
 }
 
 #ifndef NATIVE_DESKTOP_MAC
+// Only macOS has an application menu bar that starts with standard items
+bool Menu::GetApplicationMenu (std::vector<unsigned char>*) { return false; }
 void DockIcon::Bounce (bool) {}
 bool DockIcon::IsSupported () { return false; }
 void DockIcon::SetIcon (Image*) {}

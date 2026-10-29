@@ -56,6 +56,14 @@ It owns menu state only, and never destroys the host window. `Desktop` also
 provides application and Dock menus where supported. Query `menuSupport` for
 popup (1), window (2) and application (4) capabilities.
 
+On macOS the application menu bar starts with standard items, such as About, Hide,
+Services, Quit and the Window menu. `Desktop.getApplicationMenu()` returns a copy
+of the installed bar to add to. Its standard items carry an `action`, such as
+`terminate:` for Quit, and keep doing it when the copy is installed; the
+application is told of them as of its own items. macOS keeps filling the Services
+and Window menus of the installed bar, and `setApplicationMenu(null)` restores the
+original bar. Other systems have no application menu bar to copy, and return null.
+
 Pass borrowed handles as `cpp.Pointer<cpp.Void>`; use `cpp.Pointer.fromRaw` to wrap
 a raw pointer. The wrapper does not transfer ownership of the native handle.
 
@@ -85,10 +93,13 @@ haxe tests/menu.hxml
 haxe tests/smoke.hxml
 ```
 
-The native tests check menu-data validation, thread ownership, command delivery,
-modal host progress and tray cleanup. Windows tests also exercise appearance,
-accessibility, boundary rendering and GDI resource cleanup. The Haxe tests check
-encoding, menu validation, callback delivery, callback errors and idempotent close.
+The native tests check menu-data encoding and validation, thread ownership,
+command delivery, modal host progress and tray cleanup. Windows tests also
+exercise appearance, accessibility, boundary rendering and GDI resource cleanup.
+macOS tests read a default menu bar, install a copy with a menu of the
+application's own, choose Hide and restore the original bar. The Haxe tests check
+encoding, decoding, menu validation, callback delivery, callback errors and
+idempotent close, and on macOS read the installed menu bar back.
 
 CI runs CMake/CTest and the Haxe bindings on Windows, macOS and Linux. Native
 behavior is tested here. Hosts such as Lime keep only their own API and adapter

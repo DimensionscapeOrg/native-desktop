@@ -36,8 +36,23 @@ static const int MAX_MENU_DEPTH = 32;
 			}
 
 			item->label.assign ((const char*)(data + *position), labelLength);
-			if (item->id <= 0 || item->id > 0xEFFF || (item->flags & ~15) != 0 || !ids->insert (item->id).second) return false;
+			if (item->id <= 0 || item->id > 0xEFFF || (item->flags & ~31) != 0 || !ids->insert (item->id).second) return false;
 			*position += labelLength;
+
+			if (item->flags & MENU_ITEM_ACTION) {
+
+				int actionLength;
+
+				if (!ReadInt (data, length, position, &actionLength) || actionLength <= 0 || length - *position < actionLength) {
+
+					return false;
+
+				}
+
+				item->action.assign ((const char*)(data + *position), actionLength);
+				*position += actionLength;
+
+			}
 
 			if ((item->flags & MENU_ITEM_SUBMENU) && !ParseItems (data, length, position, &item->submenu, depth + 1, ids)) {
 
@@ -48,6 +63,44 @@ static const int MAX_MENU_DEPTH = 32;
 		}
 
 		return true;
+
+	}
+
+
+	static void WriteInt (std::vector<unsigned char>* data, int value) {
+
+		for (int i = 0; i < 4; i++) data->push_back ((unsigned char)((uint32_t)value >> (i * 8)));
+
+	}
+
+
+	static void WriteString (std::vector<unsigned char>* data, const std::string& text) {
+
+		WriteInt (data, (int)text.size ());
+		data->insert (data->end (), text.begin (), text.end ());
+
+	}
+
+
+	static void WriteItems (std::vector<unsigned char>* data, const std::vector<MenuItem>& items) {
+
+		WriteInt (data, (int)items.size ());
+
+		for (size_t i = 0; i < items.size (); i++) {
+
+			const MenuItem& item = items[i];
+			int flags = (item.flags & ~MENU_ITEM_ACTION) | (item.action.empty () ? 0 : MENU_ITEM_ACTION);
+
+			WriteInt (data, item.id);
+			WriteInt (data, flags);
+			WriteInt (data, item.keyCode);
+			WriteInt (data, item.keyModifiers);
+			WriteString (data, item.label);
+
+			if (flags & MENU_ITEM_ACTION) WriteString (data, item.action);
+			if (flags & MENU_ITEM_SUBMENU) WriteItems (data, item.submenu);
+
+		}
 
 	}
 
@@ -103,6 +156,16 @@ static const int MAX_MENU_DEPTH = 32;
 		if (!ParseItems (data, length, &position, &parsed, 0, &ids) || position != length) return false;
 		items->swap (parsed);
 		return true;
+
+	}
+
+
+	void Menu::Write (const std::vector<MenuItem>& items, std::vector<unsigned char>* data) {
+
+		if (!data) return;
+
+		data->clear ();
+		WriteItems (data, items);
 
 	}
 

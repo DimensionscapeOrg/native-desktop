@@ -18,7 +18,7 @@
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
-enum ItemFlags { MENU_ITEM_ENABLED = 1, MENU_ITEM_CHECKED = 2, MENU_ITEM_SEPARATOR = 4, MENU_ITEM_SUBMENU = 8 };
+enum ItemFlags { MENU_ITEM_ENABLED = 1, MENU_ITEM_CHECKED = 2, MENU_ITEM_SEPARATOR = 4, MENU_ITEM_SUBMENU = 8, MENU_ITEM_ACTION = 16 };
 enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_DOCK_SELECTION = 3 };
 enum TrayEvent { TRAY_ICON_CLICK = 0, TRAY_ICON_MENU_SELECT = 1, TRAY_ICON_RIGHT_CLICK = 2 };
 // Printable key values are Unicode. Non-printable keys use USB HID usage | (1 << 30).
@@ -31,9 +31,15 @@ enum KeyCode {
 };
 enum Modifier { MOD_SHIFT=0x0003, MOD_CTRL=0x00c0, MOD_ALT=0x0300, MOD_GUI=0x0c00 };
 
+// Menu data is little-endian Int32 values:
+//  menu := count, item[count]
+//  item := id, flags, keyCode, keyModifiers, labelLength, label,
+//          [actionLength, action if MENU_ITEM_ACTION], [menu if MENU_ITEM_SUBMENU]
+// An action names what a standard item of the application menu bar does, as
+// "terminate:" for Quit on macOS, where the item keeps doing it when installed.
 struct MenuItem {
  int flags, id, keyCode, keyModifiers;
- std::string label;
+ std::string label, action;
  std::vector<MenuItem> submenu;
 };
 // A borrowed native window. The host retains ownership of the window and display.
@@ -66,6 +72,11 @@ class Menu {
  static bool SetApplicationMenu (const unsigned char*, int);
  static bool SetWindowMenu (Window*, const unsigned char*, int);
  static bool Parse (const unsigned char*, int, std::vector<MenuItem>*);
+ // Replaces data with items in the format Parse reads.
+ static void Write (const std::vector<MenuItem>&, std::vector<unsigned char>*);
+ // The installed application menu bar, in the same format. On macOS it holds standard
+ // items from the start. False where there is no application menu bar.
+ static bool GetApplicationMenu (std::vector<unsigned char>*);
  static std::string GetLabel (const std::string&, char);
  static void PushSelection (uint32_t, int);
  static void PushDockMenuSelection (int);

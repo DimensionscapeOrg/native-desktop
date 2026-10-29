@@ -38,10 +38,33 @@ int main () {
  Integer (duplicate, 2); Item (duplicate, 1, MENU_ITEM_ENABLED, "One"); Item (duplicate, 1, MENU_ITEM_ENABLED, "Two");
  assert (!Menu::Parse (duplicate.data (), (int)duplicate.size (), &items));
  std::vector<unsigned char> invalidFlags;
- Integer (invalidFlags, 1); Item (invalidFlags, 1, 16, "Unknown");
+ Integer (invalidFlags, 1); Item (invalidFlags, 1, 32, "Unknown");
  assert (!Menu::Parse (invalidFlags.data (), (int)invalidFlags.size (), &items));
+ // The action flag needs an action after the label.
+ std::vector<unsigned char> noAction;
+ Integer (noAction, 1); Item (noAction, 1, MENU_ITEM_ENABLED | MENU_ITEM_ACTION, "Quit"); Integer (noAction, 0);
+ assert (!Menu::Parse (noAction.data (), (int)noAction.size (), &items));
  // Failed decoding must not replace the caller's previously installed menu data.
  assert (items.size () == 1 && items[0].submenu[0].id == 2);
+ // Standard items keep their actions through Write and Parse; others have none.
+ MenuItem quit = MenuItem (); quit.id = 2; quit.flags = MENU_ITEM_ENABLED; quit.keyCode = 'q'; quit.keyModifiers = MOD_GUI;
+ quit.label = "Quit"; quit.action = "terminate:";
+ MenuItem services = MenuItem (); services.id = 3; services.flags = MENU_ITEM_ENABLED | MENU_ITEM_SUBMENU; services.label = "Services";
+ services.action = "services";
+ MenuItem application = MenuItem (); application.id = 1; application.flags = MENU_ITEM_ENABLED | MENU_ITEM_SUBMENU; application.label = "Q&&A";
+ application.submenu.push_back (quit); application.submenu.push_back (services);
+ std::vector<unsigned char> written (3, 0);
+ Menu::Write (std::vector<MenuItem> (1, application), &written);
+ std::vector<MenuItem> read;
+ assert (Menu::Parse (written.data (), (int)written.size (), &read));
+ assert (read.size () == 1 && read[0].label == "Q&&A" && read[0].action.empty () && read[0].flags == application.flags);
+ assert (read[0].submenu.size () == 2 && read[0].submenu[0].action == "terminate:" && read[0].submenu[0].flags == (MENU_ITEM_ENABLED | MENU_ITEM_ACTION));
+ assert (read[0].submenu[0].keyCode == 'q' && read[0].submenu[0].keyModifiers == MOD_GUI && read[0].submenu[0].label == "Quit");
+ assert (read[0].submenu[1].action == "services" && read[0].submenu[1].submenu.empty ());
+ for (int size = 0; size < (int)written.size (); ++size) assert (!Menu::Parse (written.data (), size, &read));
+#ifndef __APPLE__
+ assert (!Menu::GetApplicationMenu (&written));
+#endif
  std::vector<unsigned char> deep;
  for (int i = 1; i <= 34; ++i) { Integer (deep, 1); Item (deep, i, MENU_ITEM_SUBMENU, "Child"); }
  Integer (deep, 0);

@@ -6,7 +6,7 @@ package desktop;
 **/
 #if cpp
 @:buildXml('<include name="${haxelib:native-desktop}/project/Build.xml"/>')
-@:cppFileCode('#include <native_desktop/Desktop.h>\nstatic bool AdvanceHaxeModal(void*) { return ::desktop::Desktop_obj::advanceModal(); }')
+@:cppFileCode('#include <native_desktop/Desktop.h>\n#include <cstring>\nstatic bool AdvanceHaxeModal(void*) { return ::desktop::Desktop_obj::advanceModal(); }')
 class Desktop {
 	static var owner = sys.thread.Thread.current();
 	static var applicationCommands:Array<MenuItem> = [];
@@ -38,6 +38,20 @@ class Desktop {
 		var success:Bool = untyped __cpp__("native_desktop::Menu::SetApplicationMenu((const unsigned char*){0}->GetBase(), {1})", data, length);
 		if (success) applicationCommands = next;
 		return success;
+	}
+	/**
+		A copy of the installed application menu bar, or null where there is none. On
+		macOS it holds standard items from the start, such as About, Hide and Quit, which
+		keep doing what they do when the copy is changed and installed.
+	**/
+	public static function getApplicationMenu():Menu {
+		checkThread();
+		untyped __cpp__("std::vector<unsigned char> desktopMenu");
+		if (!untyped __cpp__("native_desktop::Menu::GetApplicationMenu(&desktopMenu)")) return null;
+		var length:Int = untyped __cpp__("(int)desktopMenu.size()");
+		var bytes = haxe.io.Bytes.alloc(length);
+		if (length > 0) untyped __cpp__("memcpy({0}->GetBase(), desktopMenu.data(), {1})", bytes.getData(), length);
+		return Menu.decode(bytes);
 	}
 	public static function setDockMenu(menu:Menu):Bool {
 		checkThread(); var next:Array<MenuItem> = [];
@@ -76,6 +90,7 @@ class Desktop {
 	public static var onModalTick:() -> Bool;
 	public static var menuSupport(default, null):Int = 0;
 	public static function setApplicationMenu(menu:Menu):Bool return false;
+	public static function getApplicationMenu():Menu return null;
 	public static function setDockMenu(menu:Menu):Bool return false;
 	public static function poll():Void {}
 }
