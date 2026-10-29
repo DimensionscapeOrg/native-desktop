@@ -100,7 +100,6 @@
 	native_desktop::Menu::PushSelection (0, (int)[sender tag]);
 
 	id action = [sender representedObject];
-	if ([action isKindOfClass:[NSString class]]) [NSApp sendAction:NSSelectorFromString (action) to:nil from:sender];
 
 }
 
