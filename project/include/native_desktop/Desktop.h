@@ -18,6 +18,7 @@
 
 // Hosts can check for features newer than 1.1.0
 #define NATIVE_DESKTOP_MENU_OPEN_EVENTS 1
+#define NATIVE_DESKTOP_TRAY_ICON_MOUSE_EVENTS 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
@@ -30,7 +31,11 @@ enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_
 // the system has stopped tracking menus, when the host may change them again.
 enum MenuSource { MENU_SOURCE_WINDOW = 0, MENU_SOURCE_TRAY_ICON = 1, MENU_SOURCE_APPLICATION = 2, MENU_SOURCE_DOCK = 3 };
 static const int MENU_TRACKING_ENDED = -1;
-enum TrayEvent { TRAY_ICON_CLICK = 0, TRAY_ICON_MENU_SELECT = 1, TRAY_ICON_RIGHT_CLICK = 2 };
+// Tray icon events other than TRAY_ICON_MENU_SELECT carry the pointer's position in
+// screen coordinates, with the origin at the top left of the primary display, in x and
+// y. The mouse events carry a MouseButton in value.
+enum TrayEvent { TRAY_ICON_CLICK = 0, TRAY_ICON_MENU_SELECT = 1, TRAY_ICON_RIGHT_CLICK = 2, TRAY_ICON_MOUSE_DOWN = 3, TRAY_ICON_MOUSE_UP = 4, TRAY_ICON_DOUBLE_CLICK = 5 };
+enum MouseButton { MOUSE_BUTTON_LEFT = 0, MOUSE_BUTTON_MIDDLE = 1, MOUSE_BUTTON_RIGHT = 2 };
 // Printable key values are Unicode. Non-printable keys use USB HID usage | (1 << 30).
 enum KeyCode {
  KEY_BACKSPACE=8, KEY_TAB=9, KEY_RETURN=13, KEY_ESCAPE=27, KEY_DELETE=127,
@@ -71,7 +76,7 @@ struct Image {
    && (size_t)width <= (size_t)stride / 4 && (size_t)stride <= length / (size_t)height;
  }
 };
-struct Event { int kind; uint32_t target; int code, value; };
+struct Event { int kind; uint32_t target; int code, value, x, y; };
 typedef void (*EventSink) (const Event&, void*);
 typedef bool (*ModalCallback) (void*);
 // Called as a menu opens, before it is shown, with a MENU_EVENT_OPEN event. The handler
@@ -95,6 +100,8 @@ class Menu {
  static void PushSelection (uint32_t, int);
  static void PushDockMenuSelection (int);
  static void PushTrayIconEvent (int, int, int);
+ // A tray icon event with the pointer's screen position
+ static void PushTrayIconMouseEvent (int id, int type, int button, int x, int y);
  // Without an open handler, open events go to the sink or the queue like other events,
  // and this returns false.
  static bool PushOpen (uint32_t target, int menu, int source, std::vector<unsigned char>* items);

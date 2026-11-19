@@ -5,6 +5,7 @@
 // Native menus, tray icons and the Dock icon for macOS
 
 #import <Cocoa/Cocoa.h>
+#include <math.h>
 #import <objc/runtime.h>
 #include <native_desktop/Desktop.h>
 
@@ -110,9 +111,46 @@ namespace native_desktop {
 - (void)clickTrayIcon:(id)sender {
 
 	NSEvent* event = [NSApp currentEvent];
-	bool rightClick = event && ([event type] == NSEventTypeRightMouseUp || ([event modifierFlags] & NSEventModifierFlagControl));
+	int id = (int)[sender tag];
 
-	native_desktop::Menu::PushTrayIconEvent ((int)[sender tag], rightClick ? native_desktop::TRAY_ICON_RIGHT_CLICK : native_desktop::TRAY_ICON_CLICK, 0);
+	// Screen coordinates start at the bottom left of the primary display on macOS, and at its top left for hosts
+	NSPoint location = [NSEvent mouseLocation];
+	NSArray* screens = [NSScreen screens];
+	CGFloat top = [screens count] > 0 ? NSMaxY ([[screens objectAtIndex:0] frame]) : 0;
+	int x = (int)floor (location.x);
+	int y = (int)floor (top - location.y);
+
+	NSEventType type = event ? [event type] : NSEventTypeLeftMouseUp;
+	bool control = event && ([event modifierFlags] & NSEventModifierFlagControl);
+	bool down = type == NSEventTypeLeftMouseDown || type == NSEventTypeRightMouseDown || type == NSEventTypeOtherMouseDown;
+	int button = native_desktop::MOUSE_BUTTON_LEFT;
+	if (type == NSEventTypeRightMouseDown || type == NSEventTypeRightMouseUp || control) button = native_desktop::MOUSE_BUTTON_RIGHT;
+	else if (type == NSEventTypeOtherMouseDown || type == NSEventTypeOtherMouseUp) button = native_desktop::MOUSE_BUTTON_MIDDLE;
+
+	if (down) {
+
+		native_desktop::Menu::PushTrayIconMouseEvent (id, native_desktop::TRAY_ICON_MOUSE_DOWN, button, x, y);
+		return;
+
+	}
+
+	native_desktop::Menu::PushTrayIconMouseEvent (id, native_desktop::TRAY_ICON_MOUSE_UP, button, x, y);
+
+	if (button == native_desktop::MOUSE_BUTTON_RIGHT) {
+
+		native_desktop::Menu::PushTrayIconMouseEvent (id, native_desktop::TRAY_ICON_RIGHT_CLICK, button, x, y);
+
+	} else if (button == native_desktop::MOUSE_BUTTON_LEFT) {
+
+		native_desktop::Menu::PushTrayIconMouseEvent (id, native_desktop::TRAY_ICON_CLICK, button, x, y);
+
+	}
+
+	if (event && [event clickCount] == 2) {
+
+		native_desktop::Menu::PushTrayIconMouseEvent (id, native_desktop::TRAY_ICON_DOUBLE_CLICK, button, x, y);
+
+	}
 
 }
 
@@ -779,7 +817,9 @@ namespace native_desktop {
 			[button setTarget:GetMenuTarget ()];
 			[button setAction:@selector(clickTrayIcon:)];
 			[button setTag:id];
-			[button sendActionOn:(NSEventMaskLeftMouseUp | NSEventMaskRightMouseUp)];
+			// Down and up, for the mouse events; clicks are reported on the way up as before
+			[button sendActionOn:(NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp | NSEventMaskRightMouseDown | NSEventMaskRightMouseUp
+				| NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp)];
 
 			// The status bar does not keep the item alive
 			platform = DESKTOP_BRIDGE_RETAIN (statusItem);

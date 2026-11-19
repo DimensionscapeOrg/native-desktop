@@ -448,21 +448,35 @@ namespace native_desktop {
 
 				Win32TrayIcon* data = (Win32TrayIcon*)it->second->platform;
 
+				// With NOTIFYICON_VERSION_4, these all carry the pointer's screen position (the icon's for the keyboard) in wParam
+				int x = GET_X_LPARAM (wParam);
+				int y = GET_Y_LPARAM (wParam);
+
 				switch (LOWORD (lParam)) {
 
 					case NIN_SELECT:
 					case NIN_KEYSELECT:
 
-						Menu::PushTrayIconEvent (id, TRAY_ICON_CLICK, 0);
+						Menu::PushTrayIconMouseEvent (id, TRAY_ICON_CLICK, MOUSE_BUTTON_LEFT, x, y);
 						break;
 
 					case WM_CONTEXTMENU:
 
-						data->anchor.x = GET_X_LPARAM (wParam);
-						data->anchor.y = GET_Y_LPARAM (wParam);
+						data->anchor.x = x;
+						data->anchor.y = y;
 						data->hasAnchor = true;
-						Menu::PushTrayIconEvent (id, TRAY_ICON_RIGHT_CLICK, 0);
+						Menu::PushTrayIconMouseEvent (id, TRAY_ICON_RIGHT_CLICK, MOUSE_BUTTON_RIGHT, x, y);
 						break;
+
+					case WM_LBUTTONDOWN: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_DOWN, MOUSE_BUTTON_LEFT, x, y); break;
+					case WM_MBUTTONDOWN: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_DOWN, MOUSE_BUTTON_MIDDLE, x, y); break;
+					case WM_RBUTTONDOWN: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_DOWN, MOUSE_BUTTON_RIGHT, x, y); break;
+					case WM_LBUTTONUP: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_UP, MOUSE_BUTTON_LEFT, x, y); break;
+					case WM_MBUTTONUP: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_UP, MOUSE_BUTTON_MIDDLE, x, y); break;
+					case WM_RBUTTONUP: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_MOUSE_UP, MOUSE_BUTTON_RIGHT, x, y); break;
+					case WM_LBUTTONDBLCLK: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_DOUBLE_CLICK, MOUSE_BUTTON_LEFT, x, y); break;
+					case WM_MBUTTONDBLCLK: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_DOUBLE_CLICK, MOUSE_BUTTON_MIDDLE, x, y); break;
+					case WM_RBUTTONDBLCLK: Menu::PushTrayIconMouseEvent (id, TRAY_ICON_DOUBLE_CLICK, MOUSE_BUTTON_RIGHT, x, y); break;
 
 					default: break;
 

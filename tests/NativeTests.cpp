@@ -11,6 +11,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <native_desktop/WindowsAppearance.h>
+#include <shellapi.h>
 #endif
 using namespace native_desktop;
 static int calls = 0;
@@ -92,6 +93,12 @@ int main () {
  Menu::SetOpenHandler (Open, NULL);
  assert (Menu::PushOpen (77, 1, MENU_SOURCE_WINDOW, &replacement) && opens == 1 && !Menu::PollEvent (&event));
  assert (Menu::Parse (replacement.data (), (int)replacement.size (), &items) && items.size () == 1 && items[0].label == "Replaced");
+ // Tray icon mouse events carry the button in value and the screen position in x and y
+ Menu::PushTrayIconMouseEvent (5, TRAY_ICON_DOUBLE_CLICK, MOUSE_BUTTON_RIGHT, -20, 1080);
+ assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_TRAY_ICON && event.target == 5 && event.code == TRAY_ICON_DOUBLE_CLICK);
+ assert (event.value == MOUSE_BUTTON_RIGHT && event.x == -20 && event.y == 1080);
+ Menu::PushTrayIconEvent (5, TRAY_ICON_MENU_SELECT, 9);
+ assert (Menu::PollEvent (&event) && event.code == TRAY_ICON_MENU_SELECT && event.value == 9 && event.x == 0 && event.y == 0);
  Menu::PushClose (5, MENU_TRACKING_ENDED, MENU_SOURCE_TRAY_ICON);
  assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_CLOSE && event.target == 5 && event.code == MENU_TRACKING_ENDED && event.value == MENU_SOURCE_TRAY_ICON);
 #ifdef _WIN32
@@ -150,6 +157,24 @@ int main () {
  SendMessageW (handle, WM_COMMAND, MAKEWPARAM (0x1000 + 2, 0), 0);
  assert (!Menu::PollEvent (&event));
  DestroyWindow (handle); UnregisterClassW (type.lpszClassName, instance);
+ {
+  // The notification icon's messages carry the pointer's screen position in wParam
+  TrayIcon icon; icon.SetTooltip ("Native desktop mouse test");
+  if (icon.IsVisible ()) {
+   HWND tray = NULL; DWORD process = 0;
+   while ((tray = FindWindowExW (NULL, tray, L"NativeDesktopTrayIconWindow", NULL)) != NULL) {
+    GetWindowThreadProcessId (tray, &process);
+    if (process == GetCurrentProcessId ()) break;
+   }
+   assert (tray);
+   SendMessageW (tray, WM_APP + 1, MAKEWPARAM (-30, 40), MAKELPARAM (WM_LBUTTONDBLCLK, icon.GetID ()));
+   assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_TRAY_ICON && event.target == (uint32_t)icon.GetID () && event.code == TRAY_ICON_DOUBLE_CLICK);
+   assert (event.value == MOUSE_BUTTON_LEFT && event.x == -30 && event.y == 40);
+   SendMessageW (tray, WM_APP + 1, MAKEWPARAM (5, 6), MAKELPARAM (NIN_SELECT, icon.GetID ()));
+   assert (Menu::PollEvent (&event) && event.code == TRAY_ICON_CLICK && event.x == 5 && event.y == 6 && !Menu::PollEvent (&event));
+  } else std::cout << "No notification area; tray icon mouse events were not tested" << std::endl;
+  icon.Close ();
+ }
  for (int i = 0; i < 20; ++i) { TrayIcon icon; icon.SetTooltip ("Native desktop test"); icon.Close (); icon.Close (); }
  // Other applications may use this library too. Only this process owns these icons.
  HWND tray = NULL;
