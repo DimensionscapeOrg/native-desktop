@@ -53,6 +53,25 @@ bool Menu::PollEvent (Event* event) {
 void Menu::PushSelection (uint32_t window, int id) { Push (MENU_EVENT_SELECTION, window, id, 0); }
 void Menu::PushDockMenuSelection (int id) { Push (MENU_EVENT_DOCK_SELECTION, 0, id, 0); }
 void Menu::PushTrayIconEvent (int id, int type, int item) { Push (MENU_EVENT_TRAY_ICON, id, type, item); }
+static OpenHandler openHandler = NULL;
+static void* openHandlerData = NULL;
+static bool inOpenHandler = false;
+void Menu::SetOpenHandler (OpenHandler handler, void* data) { if (IsOwnerThread ()) { openHandler = handler; openHandlerData = data; } }
+bool Menu::PushOpen (uint32_t target, int menu, int source, std::vector<unsigned char>* items) {
+ if (!IsOwnerThread ()) return false;
+ // A handler that opens a menu itself does not hear about it
+ if (!openHandler) { Push (MENU_EVENT_OPEN, target, menu, source); return false; }
+ if (inOpenHandler || !items) return false;
+ Event event = {MENU_EVENT_OPEN, target, menu, source};
+ items->clear ();
+ inOpenHandler = true;
+ bool result = false;
+ try { result = openHandler (event, items, openHandlerData); }
+ catch (...) { result = false; }
+ inOpenHandler = false;
+ return result && !items->empty ();
+}
+void Menu::PushClose (uint32_t target, int menu, int source) { Push (MENU_EVENT_CLOSE, target, menu, source); }
 void Menu::SetKeyNameProvider (const char* (*provider)(int)) { if (IsOwnerThread ()) keyNameProvider = provider; }
 const char* Menu::KeyName (int key) {
  if (keyNameProvider) return keyNameProvider (key);

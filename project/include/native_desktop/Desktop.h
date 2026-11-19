@@ -16,10 +16,20 @@
 #define NATIVE_DESKTOP_LINUX
 #endif
 
+// Hosts can check for features newer than 1.1.0
+#define NATIVE_DESKTOP_MENU_OPEN_EVENTS 1
+
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
 enum ItemFlags { MENU_ITEM_ENABLED = 1, MENU_ITEM_CHECKED = 2, MENU_ITEM_SEPARATOR = 4, MENU_ITEM_SUBMENU = 8, MENU_ITEM_ACTION = 16 };
-enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_DOCK_SELECTION = 3 };
+enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_DOCK_SELECTION = 3, MENU_EVENT_OPEN = 4, MENU_EVENT_CLOSE = 5 };
+// Where an opening or closing menu belongs. Open and close events carry it in value,
+// with the window or tray icon ID in target (0 for the application and Dock menus),
+// and in code the ID of the item whose submenu it is, or 0 for the menu itself.
+// A close event with code MENU_TRACKING_ENDED follows the last menu to close, once
+// the system has stopped tracking menus, when the host may change them again.
+enum MenuSource { MENU_SOURCE_WINDOW = 0, MENU_SOURCE_TRAY_ICON = 1, MENU_SOURCE_APPLICATION = 2, MENU_SOURCE_DOCK = 3 };
+static const int MENU_TRACKING_ENDED = -1;
 enum TrayEvent { TRAY_ICON_CLICK = 0, TRAY_ICON_MENU_SELECT = 1, TRAY_ICON_RIGHT_CLICK = 2 };
 // Printable key values are Unicode. Non-printable keys use USB HID usage | (1 << 30).
 enum KeyCode {
@@ -64,6 +74,10 @@ struct Image {
 struct Event { int kind; uint32_t target; int code, value; };
 typedef void (*EventSink) (const Event&, void*);
 typedef bool (*ModalCallback) (void*);
+// Called as a menu opens, before it is shown, with a MENU_EVENT_OPEN event. The handler
+// may replace the items of that menu, by writing them to items in the format Parse reads
+// and returning true. Item IDs elsewhere in the menu must not change.
+typedef bool (*OpenHandler) (const Event&, std::vector<unsigned char>* items, void*);
 class Menu {
  public:
  static int GetSupport ();
@@ -81,6 +95,12 @@ class Menu {
  static void PushSelection (uint32_t, int);
  static void PushDockMenuSelection (int);
  static void PushTrayIconEvent (int, int, int);
+ // Without an open handler, open events go to the sink or the queue like other events,
+ // and this returns false.
+ static bool PushOpen (uint32_t target, int menu, int source, std::vector<unsigned char>* items);
+ static void PushClose (uint32_t target, int menu, int source);
+ // Optional. Open events are only useful for changing a menu when handled at once.
+ static void SetOpenHandler (OpenHandler handler, void* userData);
  // A host may forward events immediately, or leave the sink null and poll.
  // One host integration owns this library instance, on one UI thread.
  static void SetEventSink (EventSink sink, void* userData);

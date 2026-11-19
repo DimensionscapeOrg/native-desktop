@@ -17,6 +17,14 @@ static int calls = 0;
 static int modalTicks = 0;
 static bool ModalTick (void*) { return ++modalTicks < 3; }
 static void Receive (const Event& event, void*) { assert (event.kind == MENU_EVENT_SELECTION && event.target == 77 && event.code == 2); ++calls; }
+static int opens = 0;
+// Replaces the File menu (item 1) of window 77 with one item
+static bool Open (const Event& event, std::vector<unsigned char>* items, void*) {
+ assert (event.kind == MENU_EVENT_OPEN && event.target == 77 && event.code == 1 && event.value == MENU_SOURCE_WINDOW);
+ ++opens;
+ Integer (*items, 1); Item (*items, 3, MENU_ITEM_ENABLED, "Replaced");
+ return true;
+}
 int main () {
  // These checks remain enabled in Release builds too.
  if (!Menu::IsOwnerThread ()) return 1;
@@ -77,6 +85,15 @@ int main () {
  assert (!Menu::PollEvent (&event));
  Menu::SetEventSink (Receive, NULL); Menu::PushSelection (77, 2); assert (calls == 1 && !Menu::PollEvent (&event));
  Menu::SetEventSink (NULL, NULL);
+ // Without an open handler, open events are queued and the menu stays as it is
+ std::vector<unsigned char> replacement;
+ assert (!Menu::PushOpen (77, 1, MENU_SOURCE_WINDOW, &replacement) && replacement.empty ());
+ assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_OPEN && event.target == 77 && event.code == 1 && event.value == MENU_SOURCE_WINDOW);
+ Menu::SetOpenHandler (Open, NULL);
+ assert (Menu::PushOpen (77, 1, MENU_SOURCE_WINDOW, &replacement) && opens == 1 && !Menu::PollEvent (&event));
+ assert (Menu::Parse (replacement.data (), (int)replacement.size (), &items) && items.size () == 1 && items[0].label == "Replaced");
+ Menu::PushClose (5, MENU_TRACKING_ENDED, MENU_SOURCE_TRAY_ICON);
+ assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_CLOSE && event.target == 5 && event.code == MENU_TRACKING_ENDED && event.value == MENU_SOURCE_TRAY_ICON);
 #ifdef _WIN32
  HINSTANCE instance = GetModuleHandleW (NULL);
  WNDCLASSW type = {}; type.lpfnWndProc = DefWindowProcW; type.hInstance = instance; type.lpszClassName = L"NativeDesktopUnitTest";
@@ -95,6 +112,19 @@ int main () {
  SendMessageW (handle, WM_COMMAND, MAKEWPARAM (0x1000 + 2, 0), 0);
  assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_SELECTION && event.target == 77 && event.code == 2);
  assert (!Menu::PollEvent (&event));
+ // A menu of the bar asks the open handler as it opens, and is built again from its answer
+ HMENU fileMenu = GetSubMenu (GetMenu (handle), 0);
+ SendMessageW (handle, WM_INITMENUPOPUP, (WPARAM)fileMenu, MAKELPARAM (0, FALSE));
+ wchar_t label[32] = {};
+ assert (opens == 2 && GetMenuItemCount (fileMenu) == 1 && GetMenuStringW (fileMenu, 0, label, 32, MF_BYPOSITION) && wcscmp (label, L"Replaced") == 0);
+ assert (GetMenuItemID (fileMenu, 0) == 0x1000 + 3);
+ SendMessageW (handle, WM_UNINITMENUPOPUP, (WPARAM)fileMenu, 0);
+ assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_CLOSE && event.target == 77 && event.code == 1 && event.value == MENU_SOURCE_WINDOW);
+ SendMessageW (handle, WM_EXITMENULOOP, FALSE, 0);
+ assert (Menu::PollEvent (&event) && event.kind == MENU_EVENT_CLOSE && event.code == MENU_TRACKING_ENDED);
+ assert (!Menu::PollEvent (&event));
+ Menu::SetOpenHandler (NULL, NULL);
+ assert (Menu::SetWindowMenu (&window, data.data (), (int)data.size ()));
  SetWindowsMenuAppearance (handle, 2); SetWindowsMenuAppearance (handle, 1);
  USEROBJECTFLAGS station = {}; DWORD stationSize = 0;
  if (GetUserObjectInformationW (GetProcessWindowStation (), UOI_FLAGS, &station, sizeof(station), &stationSize) && (station.dwFlags & WSF_VISIBLE)) {
@@ -102,6 +132,14 @@ int main () {
   ShowWindow (handle, SW_SHOWNOACTIVATE);
   Menu::Popup (&window, data.data (), (int)data.size (), 20, 20, false);
   ShowWindow (handle, SW_HIDE);
+  // Without an open handler, the popup's open and close events wait in the queue
+  bool poppedUp = false, tracked = false;
+  while (Menu::PollEvent (&event)) {
+   assert ((event.kind == MENU_EVENT_OPEN || event.kind == MENU_EVENT_CLOSE) && event.target == 77 && event.value == MENU_SOURCE_WINDOW);
+   if (event.kind == MENU_EVENT_OPEN && event.code == 0) poppedUp = true;
+   if (event.kind == MENU_EVENT_CLOSE && event.code == MENU_TRACKING_ENDED) tracked = true;
+  }
+  assert (poppedUp && tracked);
   Menu::SetModalCallback (NULL, NULL);
   assert (modalTicks >= 3);
  } else std::cout << "No interactive window station; modal tracking was not tested\n";

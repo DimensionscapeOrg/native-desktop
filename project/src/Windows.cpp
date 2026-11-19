@@ -43,6 +43,20 @@ namespace native_desktop {
 	static std::map<HWND, MenuBar> menuBars;
 
 
+	// The popup or tray menu being tracked, whose open and close events the window's
+	// appearance subclass reports
+	struct PopupTracking {
+
+		HWND window;
+		uint32_t target;
+		int source;
+		bool dark;
+
+	};
+
+	static PopupTracking popupTracking = { NULL, 0, MENU_SOURCE_WINDOW, false };
+
+
 	static HWND GetWindowHandle (Window* window) {
 		HWND handle = window ? (HWND)window->handle : NULL;
 		return handle && GetWindowThreadProcessId (handle, NULL) == GetCurrentThreadId () ? handle : NULL;
@@ -80,6 +94,28 @@ namespace native_desktop {
 	}
 
 
+	// A submenu keeps the ID of the item it belongs to, which open and close events carry
+	static int GetMenuID (HMENU menu) {
+
+		MENUINFO info = {};
+		info.cbSize = sizeof (info);
+		info.fMask = MIM_MENUDATA;
+		return GetMenuInfo (menu, &info) ? (int)info.dwMenuData : 0;
+
+	}
+
+
+	static void SetMenuID (HMENU menu, int id) {
+
+		MENUINFO info = {};
+		info.cbSize = sizeof (info);
+		info.fMask = MIM_MENUDATA;
+		info.dwMenuData = (ULONG_PTR)id;
+		SetMenuInfo (menu, &info);
+
+	}
+
+
 	static bool AppendMenuItems (HMENU menu, const std::vector<MenuItem>& items) {
 
 		for (size_t i = 0; i < items.size (); i++) {
@@ -94,6 +130,7 @@ namespace native_desktop {
 				HMENU submenu = CreatePopupMenu ();
 
 				if (!submenu) return false;
+				SetMenuID (submenu, item.id);
 
 				if (!AppendMenuItems (submenu, item.submenu) || !AppendMenuW (menu, itemFlags | MF_POPUP, (UINT_PTR)submenu, ToWide (item.label).c_str ())) {
 
@@ -161,8 +198,62 @@ namespace native_desktop {
 
 
 
+	// Windows lets a menu's items change while WM_INITMENUPOPUP is handled, before it is shown
+	static void RebuildMenu (HWND hwnd, HMENU menu, const std::vector<unsigned char>& data, bool dark) {
+
+		std::vector<MenuItem> items;
+		if (!Menu::Parse (&data[0], (int)data.size (), &items)) return;
+
+		ReleaseWindowsMenuAppearance (menu);
+		while (GetMenuItemCount (menu) > 0) DeleteMenu (menu, 0, MF_BYPOSITION);
+		AppendMenuItems (menu, items);
+
+		if (dark) PrepareWindowsPopupAppearance (hwnd, menu, true);
+
+	}
+
+
+	static void HandleMenuNotification (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, uint32_t target, int source, bool dark) {
+
+		if (message == WM_INITMENUPOPUP && !HIWORD (lParam)) {
+
+			HMENU menu = (HMENU)wParam;
+			std::vector<unsigned char> items;
+			if (Menu::PushOpen (target, GetMenuID (menu), source, &items)) RebuildMenu (hwnd, menu, items, dark);
+
+		} else if (message == WM_UNINITMENUPOPUP && !(HIWORD (lParam) & MF_SYSMENU)) {
+
+			Menu::PushClose (target, GetMenuID ((HMENU)wParam), source);
+
+		} else if (message == WM_EXITMENULOOP) {
+
+			Menu::PushClose (target, MENU_TRACKING_ENDED, source);
+
+		}
+
+	}
+
+
+	void HandleWindowsPopupNotification (HWND window, UINT message, WPARAM wParam, LPARAM lParam) {
+
+		if (popupTracking.window && popupTracking.window == window) {
+
+			HandleMenuNotification (window, message, wParam, lParam, popupTracking.target, popupTracking.source, popupTracking.dark);
+
+		}
+
+	}
+
+
 	static LRESULT CALLBACK MenuWindowProc (HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam, UINT_PTR id, DWORD_PTR data) {
-		if (message == WM_COMMAND && HIWORD (wParam) == 0 && lParam == 0) {
+		// A popup menu on this window returns its selection, and reports its own events
+		bool popup = popupTracking.window == hwnd;
+		if (!popup && (message == WM_INITMENUPOPUP || message == WM_UNINITMENUPOPUP || message == WM_EXITMENULOOP)) {
+			auto found = menuBars.find (hwnd);
+			if (found != menuBars.end ())
+				HandleMenuNotification (hwnd, message, wParam, lParam, found->second.windowID, MENU_SOURCE_WINDOW, GetPropW (hwnd, L"NativeDesktop.DarkMenus") != NULL);
+		}
+		if (message == WM_COMMAND && HIWORD (wParam) == 0 && lParam == 0 && !popup) {
 			auto found = menuBars.find (hwnd);
 			int command = LOWORD (wParam);
 			if (found != menuBars.end () && command > MENU_COMMAND_BASE)
@@ -208,11 +299,18 @@ namespace native_desktop {
 
 		}
 
-		UINT flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON;
+		// Notifications are left on, for the open and close events
+		UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
 		flags |= GetSystemMetrics (SM_MENUDROPALIGNMENT) ? TPM_RIGHTALIGN : TPM_LEFTALIGN;
 
 		if (!BeginWindowsMenuTracking (hwnd)) { ReleaseWindowsMenuAppearance (menu); DestroyMenu (menu); return 0; }
+		PopupTracking previous = popupTracking;
+		popupTracking.window = hwnd;
+		popupTracking.target = window->id;
+		popupTracking.source = MENU_SOURCE_WINDOW;
+		popupTracking.dark = WindowsMenuDark (hwnd);
 		int command = (int)TrackPopupMenuEx (menu, flags, point.x, point.y, hwnd, NULL);
+		popupTracking = previous;
 		EndWindowsMenuTracking (hwnd);
 
 		ReleaseWindowsMenuAppearance (menu);
@@ -612,11 +710,17 @@ namespace native_desktop {
 		// Without the foreground, the menu would stay open when clicking elsewhere
 		SetForegroundWindow (hwnd);
 
-		UINT flags = TPM_RETURNCMD | TPM_NONOTIFY | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN;
+		UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_BOTTOMALIGN;
 		flags |= GetSystemMetrics (SM_MENUDROPALIGNMENT) ? TPM_RIGHTALIGN : TPM_LEFTALIGN;
 
 		if (!BeginWindowsMenuTracking (hwnd)) { ReleaseWindowsMenuAppearance (menu); DestroyMenu (menu); return 0; }
+		PopupTracking previous = popupTracking;
+		popupTracking.window = hwnd;
+		popupTracking.target = (uint32_t)id;
+		popupTracking.source = MENU_SOURCE_TRAY_ICON;
+		popupTracking.dark = WindowsMenuDark (NULL);
 		int command = (int)TrackPopupMenuEx (menu, flags, point.x, point.y, hwnd, NULL);
+		popupTracking = previous;
 		EndWindowsMenuTracking (hwnd);
 
 		// Lets the menu close properly after it is dismissed (see TrackPopupMenu)

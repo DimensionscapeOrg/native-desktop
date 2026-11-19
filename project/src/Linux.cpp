@@ -43,6 +43,7 @@ namespace native_desktop {
 		void (*gtk_accel_label_set_accel) (void*, unsigned int, int);
 		void* (*gtk_bin_get_child) (void*);
 		void* (*gtk_check_menu_item_new_with_mnemonic) (const char*);
+		void (*gtk_container_foreach) (void*, void (*)(void*, void*), void*);
 		void (*gtk_check_menu_item_set_active) (void*, int);
 		void (*gtk_disable_setlocale) (void);
 		int (*gtk_events_pending) (void);
@@ -122,6 +123,7 @@ namespace native_desktop {
 
 		LIME_GTK_OPTIONAL (gdk_set_allowed_backends);
 		LIME_GTK_OPTIONAL (gtk_accel_label_set_accel);
+		LIME_GTK_OPTIONAL (gtk_container_foreach);
 		LIME_GTK_OPTIONAL (gtk_disable_setlocale);
 		LIME_GTK_OPTIONAL (g_object_get);
 		LIME_GTK_OPTIONAL (g_free);
@@ -251,7 +253,73 @@ namespace native_desktop {
 		return provider; // Borrowed from GTK's theme cache.
 	}
 
-	static void AppendMenuItems (void* menu, const std::vector<MenuItem>& items, GCallbackFunc onActivate, int tag, void* provider = NULL) {
+	// Where a menu belongs and how its items were made, for its open and close events
+	// and for building it again as it opens
+	struct GTKMenuContext {
+
+		int menuID;
+		int source;
+		uint32_t target;
+		GCallbackFunc onActivate;
+		int tag;
+		void* provider;
+
+	};
+
+
+	static void AppendMenuItems (void* menu, const std::vector<MenuItem>& items, GCallbackFunc onActivate, int tag, void* provider = NULL, const GTKMenuContext* context = NULL);
+
+
+	static void FreeMenuContext (void* data, void*) {
+
+		delete (GTKMenuContext*)data;
+
+	}
+
+
+	static void DestroyMenuChild (void* widget, void*) {
+
+		gtk.gtk_widget_destroy (widget);
+
+	}
+
+
+	// A submenu is mapped each time it pops up, before GTK draws it, so its items can still change
+	static void OnMenuMap (void* menu, void* data) {
+
+		GTKMenuContext* context = (GTKMenuContext*)data;
+		std::vector<unsigned char> replacement;
+
+		if (!Menu::PushOpen (context->target, context->menuID, context->source, &replacement) || !gtk.gtk_container_foreach) return;
+
+		std::vector<MenuItem> items;
+		if (!Menu::Parse (&replacement[0], (int)replacement.size (), &items)) return;
+
+		gtk.gtk_container_foreach (menu, DestroyMenuChild, NULL);
+		AppendMenuItems (menu, items, context->onActivate, context->tag, context->provider, context);
+		gtk.gtk_widget_show_all (menu);
+
+	}
+
+
+	static void OnMenuUnmap (void* menu, void* data) {
+
+		GTKMenuContext* context = (GTKMenuContext*)data;
+		Menu::PushClose (context->target, context->menuID, context->source);
+
+	}
+
+
+	static void WatchMenu (void* menu, const GTKMenuContext& context, bool open) {
+
+		GTKMenuContext* data = new GTKMenuContext (context);
+		if (open) gtk.g_signal_connect_data (menu, "map", (GCallbackFunc)OnMenuMap, data, NULL, 0);
+		gtk.g_signal_connect_data (menu, "unmap", (GCallbackFunc)OnMenuUnmap, data, (void*)FreeMenuContext, 0);
+
+	}
+
+
+	static void AppendMenuItems (void* menu, const std::vector<MenuItem>& items, GCallbackFunc onActivate, int tag, void* provider, const GTKMenuContext* context) {
 		ApplyMenuTheme (menu, provider);
 
 		for (size_t i = 0; i < items.size (); i++) {
@@ -285,7 +353,20 @@ namespace native_desktop {
 				if (hasSubmenu) {
 
 					void* submenu = gtk.gtk_menu_new ();
-					AppendMenuItems (submenu, item.submenu, onActivate, tag, provider);
+
+					if (context) {
+
+						GTKMenuContext submenuContext = *context;
+						submenuContext.menuID = item.id;
+						WatchMenu (submenu, submenuContext, true);
+						AppendMenuItems (submenu, item.submenu, onActivate, tag, provider, &submenuContext);
+
+					} else {
+
+						AppendMenuItems (submenu, item.submenu, onActivate, tag, provider);
+
+					}
+
 					gtk.gtk_menu_item_set_submenu (widget, submenu);
 
 				} else {
@@ -340,10 +421,24 @@ namespace native_desktop {
 
 		}
 
+		void* provider = GetMenuTheme (window);
+		GTKMenuContext context = { 0, MENU_SOURCE_WINDOW, window->id, (GCallbackFunc)OnItemActivate, 0, provider };
+
+		// The menu itself is asked about before it is built, its submenus as they pop up
+		std::vector<unsigned char> replacement;
+
+		if (PushOpen (window->id, 0, MENU_SOURCE_WINDOW, &replacement)) {
+
+			std::vector<MenuItem> replaced;
+			if (Parse (&replacement[0], (int)replacement.size (), &replaced)) items.swap (replaced);
+
+		}
+
 		void* menu = gtk.gtk_menu_new ();
 		gtk.g_object_ref_sink (menu);
 
-		AppendMenuItems (menu, items, (GCallbackFunc)OnItemActivate, 0, GetMenuTheme (window));
+		AppendMenuItems (menu, items, (GCallbackFunc)OnItemActivate, 0, provider, &context);
+		WatchMenu (menu, context, false);
 		gtk.gtk_widget_show_all (menu);
 		gtk.g_signal_connect_data (menu, "deactivate", (GCallbackFunc)OnMenuDeactivate, NULL, NULL, 0);
 
@@ -374,6 +469,7 @@ namespace native_desktop {
 
 		}
 
+		PushClose (window->id, MENU_TRACKING_ENDED, MENU_SOURCE_WINDOW);
 		return popupSelection;
 
 	}
