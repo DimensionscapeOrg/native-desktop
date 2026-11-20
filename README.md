@@ -7,7 +7,7 @@ compile it directly into an hxcpp executable. Other Haxe targets report unsuppor
 Install the Haxe bindings:
 
 ```sh
-haxelib install native-desktop 1.1.0
+haxelib install native-desktop 1.2.0
 ```
 
 For development, clone this repository and register its directory:

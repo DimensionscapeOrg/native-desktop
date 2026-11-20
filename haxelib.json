@@ -1,11 +1,11 @@
 {
  "name": "native-desktop",
- "version": "1.1.0",
+ "version": "1.2.0",
  "url": "https://github.com/DimensionscapeOrg/native-desktop",
  "license": "MIT",
  "classPath": "src",
  "contributors": ["Dimensionscape"],
- "description": "Native desktop menus and tray icons, independent of application and rendering frameworks.",
+ "description": "Native desktop menus, tray icons, clipboard formats, drag and drop, and window, trash and volume access, independent of application and rendering frameworks.",
  "tags": ["native", "desktop", "menu", "tray", "cpp"],
- "releasenote": "Read the macOS menu bar back with Desktop.getApplicationMenu(), and keep its standard items, Services and Window menus working when a copy is installed."
+ "releasenote": "Menus report opening and closing and can be changed as they open. Tray icons report where they are clicked and their mouse buttons. New: the clipboard's HTML, rich text, URL, file and image formats; drag and drop in and out of a window; stacking, moving and resizing a window; moving files to the trash; and the mounted storage volumes."
 }
