@@ -9,6 +9,9 @@
 #include <cstring>
 #include <iostream>
 #include <thread>
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 #ifdef _WIN32
 #include <windows.h>
 #include <native_desktop/WindowsAppearance.h>
@@ -234,6 +237,29 @@ int main () {
   std::vector<ClipboardItem> url (1); url[0].format = CLIPBOARD_URL; url[0].text = "https://example.com/caf%C3%A9";
   assert (Clipboard::SetItems (url) && Clipboard::GetText (CLIPBOARD_URL, &text) && text == url[0].text && !Clipboard::HasFormat (CLIPBOARD_HTML));
   std::cout << "Clipboard formats passed\n";
+ }
+ // A file sent to the trash stays there for the user, so this only runs where asked
+ const char* testTrash = getenv ("NATIVE_DESKTOP_TEST_TRASH");
+ if (testTrash && testTrash[0] == '1' && Trash::IsSupported ()) {
+  #ifdef _WIN32
+  char folder[MAX_PATH]; GetTempPathA (MAX_PATH, folder);
+  std::string path = std::string (folder) + "native-desktop trash test caf\xc3\xa9.txt";
+  std::wstring widePath (path.size () + 1, L'\0');
+  widePath.resize (MultiByteToWideChar (CP_UTF8, 0, path.c_str (), -1, &widePath[0], (int)widePath.size ()) - 1);
+  FILE* file = _wfopen (widePath.c_str (), L"w");
+  #else
+  std::string path = "/tmp/native-desktop trash test caf\xc3\xa9.txt";
+  FILE* file = fopen (path.c_str (), "w");
+  #endif
+  assert (file); fputs ("trash", file); fclose (file);
+  assert (Trash::MoveToTrash (path.c_str ()));
+  #ifdef _WIN32
+  assert (GetFileAttributesW (widePath.c_str ()) == INVALID_FILE_ATTRIBUTES);
+  #else
+  assert (access (path.c_str (), F_OK) != 0);
+  #endif
+  assert (!Trash::MoveToTrash (path.c_str ()) && !Trash::MoveToTrash ("") && !Trash::MoveToTrash (NULL));
+  std::cout << "Moving to the trash passed\n";
  }
  std::cout << "Native menu decoding, ownership, event delivery and lifecycle passed\n";
 }
