@@ -20,6 +20,7 @@
 #define NATIVE_DESKTOP_MENU_OPEN_EVENTS 1
 #define NATIVE_DESKTOP_TRAY_ICON_MOUSE_EVENTS 1
 #define NATIVE_DESKTOP_CLIPBOARD 1
+#define NATIVE_DESKTOP_WINDOW_CONTROL 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
@@ -169,6 +170,19 @@ class Clipboard {
  // Linux serves other applications' requests for what was set from the owning UI thread, which calls this
  // as it polls; elsewhere it does nothing
  static void Update ();
+};
+// The edges StartResize moves, combined for a corner, as WINDOW_EDGE_TOP | WINDOW_EDGE_LEFT
+enum WindowEdge { WINDOW_EDGE_TOP = 1, WINDOW_EDGE_BOTTOM = 2, WINDOW_EDGE_LEFT = 4, WINDOW_EDGE_RIGHT = 8 };
+// Stacking, moving and resizing a borrowed window, which SDL has no calls for. StartMove and StartResize
+// are called while the left button is down, as from its mouse down event, and follow the pointer until the
+// button is released; Windows and macOS return then, while X11's window manager carries on by itself.
+class WindowControl {
+ public:
+ static bool OrderToBack (Window* window);
+ static bool OrderAbove (Window* window, Window* other);
+ static bool OrderBelow (Window* window, Window* other);
+ static bool StartMove (Window* window);
+ static bool StartResize (Window* window, int edges);
 };
 class DockIcon {
  public:
