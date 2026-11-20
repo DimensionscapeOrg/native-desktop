@@ -99,6 +99,13 @@ void DockIcon::SetIcon (Image*) {}
 bool DockIcon::SetMenu (const unsigned char*, int) { return false; }
 #endif
 #if !defined(NATIVE_DESKTOP_WINDOWS) && !defined(NATIVE_DESKTOP_MAC) && !defined(NATIVE_DESKTOP_LINUX)
+bool Clipboard::IsSupported () { return false; }
+bool Clipboard::HasFormat (int) { return false; }
+bool Clipboard::GetText (int, std::string*) { return false; }
+bool Clipboard::GetFiles (std::vector<std::string>*) { return false; }
+bool Clipboard::GetImage (std::vector<unsigned char>*, int*, int*) { return false; }
+bool Clipboard::SetItems (const std::vector<ClipboardItem>&) { return false; }
+void Clipboard::Update () {}
 int Menu::GetSupport () { return 0; }
 int Menu::Popup (Window*, const unsigned char*, int, int, int, bool) { return 0; }
 void Menu::Remove (Window*) {}
