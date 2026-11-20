@@ -10,8 +10,9 @@
   <lib name="gdi32.lib" if="windows" unless="mingw"/>
   <lib name="comctl32.lib" if="windows" unless="mingw"/>
   <lib name="advapi32.lib" if="windows" unless="mingw"/>
+  <lib name="ole32.lib" if="windows" unless="mingw"/>
   <lib name="-luser32" if="mingw"/><lib name="-lshell32" if="mingw"/>
-  <lib name="-lgdi32" if="mingw"/><lib name="-lcomctl32" if="mingw"/><lib name="-ladvapi32" if="mingw"/>
+  <lib name="-lgdi32" if="mingw"/><lib name="-lcomctl32" if="mingw"/><lib name="-ladvapi32" if="mingw"/><lib name="-lole32" if="mingw"/>
   <lib name="-ldl" if="linux"/>
   <vflag name="-framework" value="Cocoa" if="mac||macos"/>
  </target>
