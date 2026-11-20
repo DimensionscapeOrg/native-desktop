@@ -23,11 +23,12 @@
 #define NATIVE_DESKTOP_WINDOW_CONTROL 1
 #define NATIVE_DESKTOP_TRASH 1
 #define NATIVE_DESKTOP_STORAGE_VOLUMES 1
+#define NATIVE_DESKTOP_DRAG_DROP 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
 enum ItemFlags { MENU_ITEM_ENABLED = 1, MENU_ITEM_CHECKED = 2, MENU_ITEM_SEPARATOR = 4, MENU_ITEM_SUBMENU = 8, MENU_ITEM_ACTION = 16 };
-enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_DOCK_SELECTION = 3, MENU_EVENT_OPEN = 4, MENU_EVENT_CLOSE = 5 };
+enum EventKind { MENU_EVENT_SELECTION = 1, MENU_EVENT_TRAY_ICON = 2, MENU_EVENT_DOCK_SELECTION = 3, MENU_EVENT_OPEN = 4, MENU_EVENT_CLOSE = 5, DRAG_EVENT_COMPLETE = 6 };
 // Where an opening or closing menu belongs. Open and close events carry it in value,
 // with the window or tray icon ID in target (0 for the application and Dock menus),
 // and in code the ID of the item whose submenu it is, or 0 for the menu itself.
@@ -208,6 +209,46 @@ class StorageVolumes {
  public:
  // Any thread may call this. Hosts compare lists to see volumes mount and unmount.
  static bool GetVolumes (std::vector<StorageVolume>* volumes);
+};
+// Drag and drop between a borrowed window and other applications, in the clipboard's formats. Actions are
+// flags, so a source can allow several, and the bits match Windows' DROPEFFECT values.
+enum DropAction { DROP_ACTION_NONE = 0, DROP_ACTION_COPY = 1, DROP_ACTION_MOVE = 2, DROP_ACTION_LINK = 4 };
+enum DragEventType { DRAG_ENTER = 1, DRAG_OVER = 2, DRAG_LEAVE = 3, DRAG_DROP = 4 };
+// What is dragged over a target window, readable while the handler runs, in the formats and layouts of Clipboard
+class DragData {
+ public:
+ virtual ~DragData () {}
+ virtual bool HasFormat (int format) = 0;
+ virtual bool GetText (int format, std::string* text) = 0;
+ virtual bool GetFiles (std::vector<std::string>* files) = 0;
+ virtual bool GetImage (std::vector<unsigned char>* pixels, int* width, int* height) = 0;
+};
+// x and y are in the window's client coordinates, in the units the host's window events use. allowedActions
+// holds the DropAction flags the source allows.
+struct DragEvent { int type; uint32_t window; int x, y, allowedActions; };
+// Called on the owning UI thread as a drag enters, moves over, leaves or drops on a target window. It returns
+// the action a drop would take, one of allowedActions, or DROP_ACTION_NONE to refuse it; for DRAG_DROP, the
+// action taken. data is null for DRAG_LEAVE.
+typedef int (*DragHandler) (const DragEvent& event, DragData* data, void* userData);
+class DragDrop {
+ public:
+ static bool IsSupported ();
+ static void SetHandler (DragHandler handler, void* userData);
+ // Lets the window take drags, which then go to the handler instead of the host's own file and text drops,
+ // or gives them back to the host
+ static bool SetTarget (Window* window, bool enabled);
+ // Drags items out of the window, while the left button is down, as from its mouse down or move event.
+ // image follows the pointer, which is offsetX and offsetY from its top left. Returns the DropAction taken
+ // when the drag ends before this returns, as on Windows, where the host keeps drawing through the modal
+ // callback; -1 when it ends later with a DRAG_EVENT_COMPLETE event carrying id in target and the DropAction
+ // in value, as on macOS and X11; or DROP_ACTION_NONE when it cannot start.
+ static int StartDrag (Window* window, const std::vector<ClipboardItem>& items, Image* image, int offsetX, int offsetY, int allowedActions, int id);
+ // X11 talks to other applications on its own connection, which the owning UI thread polls through this
+ // as it polls; elsewhere it does nothing
+ static void Update ();
+ // For the platform code
+ static int Dispatch (const DragEvent& event, DragData* data);
+ static void PushComplete (int id, int action);
 };
 class DockIcon {
  public:

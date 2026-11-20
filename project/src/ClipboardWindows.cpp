@@ -1,4 +1,5 @@
 #include <native_desktop/Desktop.h>
+#include "ClipboardWindowsFormats.h"
 
 #ifdef NATIVE_DESKTOP_WINDOWS
 
@@ -311,23 +312,16 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::IsSupported () {
-
-		return true;
-
-	}
-
-
-	bool Clipboard::HasFormat (int format) {
+	bool WindowsHasClipboardFormat (int format, const WindowsFormatCheck& has) {
 
 		switch (format) {
 
-			case CLIPBOARD_TEXT: return IsClipboardFormatAvailable (CF_UNICODETEXT) != 0;
-			case CLIPBOARD_HTML: return IsClipboardFormatAvailable (HTMLFormat ()) != 0;
-			case CLIPBOARD_RICH_TEXT: return IsClipboardFormatAvailable (RichTextFormat ()) != 0;
-			case CLIPBOARD_URL: return IsClipboardFormatAvailable (URLFormat ()) != 0 || IsClipboardFormatAvailable (ANSIURLFormat ()) != 0;
-			case CLIPBOARD_FILE_LIST: return IsClipboardFormatAvailable (CF_HDROP) != 0;
-			case CLIPBOARD_IMAGE: return IsClipboardFormatAvailable (CF_DIBV5) != 0 || IsClipboardFormatAvailable (CF_DIB) != 0;
+			case CLIPBOARD_TEXT: return has (CF_UNICODETEXT);
+			case CLIPBOARD_HTML: return has (HTMLFormat ());
+			case CLIPBOARD_RICH_TEXT: return has (RichTextFormat ());
+			case CLIPBOARD_URL: return has (URLFormat ()) || has (ANSIURLFormat ());
+			case CLIPBOARD_FILE_LIST: return has (CF_HDROP);
+			case CLIPBOARD_IMAGE: return has (CF_DIBV5) || has (CF_DIB);
 			default: return false;
 
 		}
@@ -335,137 +329,143 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::GetText (int format, std::string* text) {
-
-		if (!text || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+	bool WindowsReadClipboardText (int format, const WindowsFormatRead& read, std::string* text) {
 
 		std::vector<unsigned char> data;
-		bool result = false;
 
 		switch (format) {
 
 			case CLIPBOARD_TEXT:
 
-				if (ReadClipboardBytes (CF_UNICODETEXT, &data) && data.size () >= 2) {
+				if (read (CF_UNICODETEXT, &data) && data.size () >= 2) {
 
 					*text = ClipboardUTF8 ((const wchar_t*)&data[0], (int)(wcsnlen ((const wchar_t*)&data[0], data.size () / 2)));
-					result = true;
+					return true;
 
 				}
-				break;
+				return false;
 
 			case CLIPBOARD_HTML:
 
-				if (ReadClipboardBytes (HTMLFormat (), &data)) {
+				if (read (HTMLFormat (), &data) && !data.empty ()) {
 
 					std::string html ((const char*)&data[0], strnlen ((const char*)&data[0], data.size ()));
-					result = GetHTMLFragment (html, text);
+					return GetHTMLFragment (html, text);
 
 				}
-				break;
+				return false;
 
 			case CLIPBOARD_RICH_TEXT:
 
-				if (ReadClipboardBytes (RichTextFormat (), &data)) {
+				if (read (RichTextFormat (), &data) && !data.empty ()) {
 
 					text->assign ((const char*)&data[0], strnlen ((const char*)&data[0], data.size ()));
-					result = true;
+					return true;
 
 				}
-				break;
+				return false;
 
 			case CLIPBOARD_URL:
 
-				if (ReadClipboardBytes (URLFormat (), &data) && data.size () >= 2) {
+				if (read (URLFormat (), &data) && data.size () >= 2) {
 
 					*text = ClipboardUTF8 ((const wchar_t*)&data[0], (int)(wcsnlen ((const wchar_t*)&data[0], data.size () / 2)));
-					result = true;
+					return true;
 
-				} else if (ReadClipboardBytes (ANSIURLFormat (), &data)) {
+				} else if (read (ANSIURLFormat (), &data) && !data.empty ()) {
 
 					std::string ansi ((const char*)&data[0], strnlen ((const char*)&data[0], data.size ()));
 					int size = MultiByteToWideChar (CP_ACP, 0, ansi.c_str (), (int)ansi.size (), NULL, 0);
 					std::wstring wide (size > 0 ? size : 0, L'\0');
 					if (size > 0) MultiByteToWideChar (CP_ACP, 0, ansi.c_str (), (int)ansi.size (), &wide[0], size);
 					*text = ClipboardUTF8 (wide.c_str (), (int)wide.size ());
-					result = true;
+					return true;
 
 				}
-				break;
+				return false;
 
-			default: break;
+			default:
+
+				return false;
 
 		}
-
-		CloseClipboard ();
-		return result;
 
 	}
 
 
-	bool Clipboard::GetFiles (std::vector<std::string>* files) {
+	// CF_HDROP holds a DROPFILES header, then each path and a null, then one more null
+	bool WindowsReadClipboardFiles (const WindowsFormatRead& read, std::vector<std::string>* files) {
 
-		if (!files || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+		std::vector<unsigned char> data;
+		if (!read (CF_HDROP, &data) || data.size () < sizeof (DROPFILES)) return false;
 
-		HDROP drop = (HDROP)GetClipboardData (CF_HDROP);
-		bool result = false;
+		const DROPFILES* drop = (const DROPFILES*)&data[0];
+		if (drop->pFiles < sizeof (DROPFILES) || drop->pFiles > data.size ()) return false;
 
-		if (drop) {
+		files->clear ();
 
-			files->clear ();
-			UINT count = DragQueryFileW (drop, 0xFFFFFFFF, NULL, 0);
+		if (drop->fWide) {
 
-			for (UINT i = 0; i < count; i++) {
+			const wchar_t* path = (const wchar_t*)&data[drop->pFiles];
+			const wchar_t* end = (const wchar_t*)(&data[0] + data.size ());
 
-				UINT length = DragQueryFileW (drop, i, NULL, 0);
-				std::wstring path (length + 1, L'\0');
-				DragQueryFileW (drop, i, &path[0], length + 1);
-				files->push_back (ClipboardUTF8 (path.c_str (), (int)length));
+			while (path < end && *path) {
+
+				size_t length = wcsnlen (path, end - path);
+				files->push_back (ClipboardUTF8 (path, (int)length));
+				path += length + 1;
 
 			}
 
-			result = true;
+		} else {
+
+			const char* path = (const char*)&data[drop->pFiles];
+			const char* end = (const char*)(&data[0] + data.size ());
+
+			while (path < end && *path) {
+
+				size_t length = strnlen (path, end - path);
+				int size = MultiByteToWideChar (CP_ACP, 0, path, (int)length, NULL, 0);
+				std::wstring wide (size > 0 ? size : 0, L'\0');
+				if (size > 0) MultiByteToWideChar (CP_ACP, 0, path, (int)length, &wide[0], size);
+				files->push_back (ClipboardUTF8 (wide.c_str (), (int)wide.size ()));
+				path += length + 1;
+
+			}
 
 		}
 
-		CloseClipboard ();
-		return result;
+		return true;
 
 	}
 
 
-	bool Clipboard::GetImage (std::vector<unsigned char>* pixels, int* width, int* height) {
-
-		if (!pixels || !width || !height || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+	bool WindowsReadClipboardImage (const WindowsFormatRead& read, std::vector<unsigned char>* pixels, int* width, int* height) {
 
 		// CF_DIBV5 keeps alpha, where Windows has it
 		std::vector<unsigned char> data;
-		bool result = (ReadClipboardBytes (CF_DIBV5, &data) && ReadDIB (data, pixels, width, height))
-			|| (ReadClipboardBytes (CF_DIB, &data) && ReadDIB (data, pixels, width, height));
-
-		CloseClipboard ();
-		return result;
+		return (read (CF_DIBV5, &data) && ReadDIB (data, pixels, width, height))
+			|| (read (CF_DIB, &data) && ReadDIB (data, pixels, width, height));
 
 	}
 
 
-	bool Clipboard::SetItems (const std::vector<ClipboardItem>& items) {
+	bool WindowsEncodeClipboardItems (const std::vector<ClipboardItem>& items, std::vector<WindowsFormatData>* formats) {
 
-		if (!Menu::IsOwnerThread () || !OpenWindowsClipboard (ClipboardOwner ())) return false;
-
-		EmptyClipboard ();
 		bool result = true;
 
 		for (size_t i = 0; i < items.size (); i++) {
 
 			const ClipboardItem& item = items[i];
+			WindowsFormatData entry;
 
 			switch (item.format) {
 
 				case CLIPBOARD_TEXT: {
 
 					std::wstring text = ClipboardWide (item.text);
-					result = PutClipboardData (CF_UNICODETEXT, text.c_str (), (text.size () + 1) * sizeof (wchar_t)) && result;
+					entry.format = CF_UNICODETEXT;
+					entry.data.assign ((const unsigned char*)text.c_str (), (const unsigned char*)(text.c_str () + text.size () + 1));
 					break;
 
 				}
@@ -473,20 +473,23 @@ namespace native_desktop {
 				case CLIPBOARD_HTML: {
 
 					std::string html = CreateHTMLFormat (item.text);
-					result = PutClipboardData (HTMLFormat (), html.c_str (), html.size () + 1) && result;
+					entry.format = HTMLFormat ();
+					entry.data.assign ((const unsigned char*)html.c_str (), (const unsigned char*)html.c_str () + html.size () + 1);
 					break;
 
 				}
 
 				case CLIPBOARD_RICH_TEXT:
 
-					result = PutClipboardData (RichTextFormat (), item.text.c_str (), item.text.size () + 1) && result;
+					entry.format = RichTextFormat ();
+					entry.data.assign ((const unsigned char*)item.text.c_str (), (const unsigned char*)item.text.c_str () + item.text.size () + 1);
 					break;
 
 				case CLIPBOARD_URL: {
 
 					std::wstring url = ClipboardWide (item.text);
-					result = PutClipboardData (URLFormat (), url.c_str (), (url.size () + 1) * sizeof (wchar_t)) && result;
+					entry.format = URLFormat ();
+					entry.data.assign ((const unsigned char*)url.c_str (), (const unsigned char*)(url.c_str () + url.size () + 1));
 					break;
 
 				}
@@ -498,12 +501,12 @@ namespace native_desktop {
 					for (size_t j = 0; j < item.files.size (); j++) { list += ClipboardWide (item.files[j]); list += L'\0'; }
 					list += L'\0';
 
-					std::vector<unsigned char> data (sizeof (DROPFILES) + list.size () * sizeof (wchar_t));
-					DROPFILES* drop = (DROPFILES*)&data[0];
+					entry.format = CF_HDROP;
+					entry.data.resize (sizeof (DROPFILES) + list.size () * sizeof (wchar_t));
+					DROPFILES* drop = (DROPFILES*)&entry.data[0];
 					drop->pFiles = sizeof (DROPFILES);
 					drop->fWide = TRUE;
-					memcpy (&data[sizeof (DROPFILES)], list.c_str (), list.size () * sizeof (wchar_t));
-					result = PutClipboardData (CF_HDROP, &data[0], data.size ()) && result;
+					memcpy (&entry.data[sizeof (DROPFILES)], list.c_str (), list.size () * sizeof (wchar_t));
 					break;
 
 				}
@@ -513,19 +516,100 @@ namespace native_desktop {
 					if (item.width > 0 && item.height > 0 && item.pixels.size () >= (size_t)item.width * item.height * 4) {
 
 						// Windows makes CF_DIB and CF_BITMAP from it for applications that ask for those
-						std::vector<unsigned char> dib = CreateDIBV5 (item);
-						result = PutClipboardData (CF_DIBV5, &dib[0], dib.size ()) && result;
+						entry.format = CF_DIBV5;
+						entry.data = CreateDIBV5 (item);
 
 					} else {
 
 						result = false;
+						continue;
 
 					}
 					break;
 
-				default: break;
+				default:
+
+					continue;
 
 			}
+
+			formats->push_back (entry);
+
+		}
+
+		return result;
+
+	}
+
+
+	static bool HasClipboardData (UINT format) {
+
+		return IsClipboardFormatAvailable (format) != 0;
+
+	}
+
+
+	bool Clipboard::IsSupported () {
+
+		return true;
+
+	}
+
+
+	bool Clipboard::HasFormat (int format) {
+
+		return WindowsHasClipboardFormat (format, HasClipboardData);
+
+	}
+
+
+	bool Clipboard::GetText (int format, std::string* text) {
+
+		if (!text || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+
+		bool result = WindowsReadClipboardText (format, ReadClipboardBytes, text);
+		CloseClipboard ();
+		return result;
+
+	}
+
+
+	bool Clipboard::GetFiles (std::vector<std::string>* files) {
+
+		if (!files || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+
+		bool result = WindowsReadClipboardFiles (ReadClipboardBytes, files);
+		CloseClipboard ();
+		return result;
+
+	}
+
+
+	bool Clipboard::GetImage (std::vector<unsigned char>* pixels, int* width, int* height) {
+
+		if (!pixels || !width || !height || !OpenWindowsClipboard (ClipboardOwner ())) return false;
+
+		bool result = WindowsReadClipboardImage (ReadClipboardBytes, pixels, width, height);
+		CloseClipboard ();
+		return result;
+
+	}
+
+
+	bool Clipboard::SetItems (const std::vector<ClipboardItem>& items) {
+
+		if (!Menu::IsOwnerThread ()) return false;
+
+		std::vector<WindowsFormatData> formats;
+		bool result = WindowsEncodeClipboardItems (items, &formats);
+
+		if (!OpenWindowsClipboard (ClipboardOwner ())) return false;
+
+		EmptyClipboard ();
+
+		for (size_t i = 0; i < formats.size (); i++) {
+
+			result = PutClipboardData (formats[i].format, &formats[i].data[0], formats[i].data.size ()) && result;
 
 		}
 

@@ -22,6 +22,9 @@ static int calls = 0;
 static int modalTicks = 0;
 static bool ModalTick (void*) { return ++modalTicks < 3; }
 static void Receive (const Event& event, void*) { assert (event.kind == MENU_EVENT_SELECTION && event.target == 77 && event.code == 2); ++calls; }
+static int dragAsked = 0;
+// Asks for every action, which Dispatch narrows to one the source allows
+static int DragAnswer (const DragEvent& event, DragData*, void*) { assert (event.window == 5 && event.x == 10 && event.y == 20); ++dragAsked; return DROP_ACTION_COPY | DROP_ACTION_MOVE | DROP_ACTION_LINK; }
 static int opens = 0;
 // Replaces the File menu (item 1) of window 77 with one item
 static bool Open (const Event& event, std::vector<unsigned char>* items, void*) {
@@ -181,6 +184,19 @@ int main () {
   ShowWindow (handle, SW_HIDE);
   DestroyWindow (second);
  }
+ {
+  // A drop target is OLE's: its registration replaces the window's WM_DROPFILES drops until it is revoked
+  assert (DragDrop::IsSupported ());
+  assert (DragDrop::SetTarget (&window, true) && GetPropW (handle, L"OleDropTargetInterface") != NULL);
+  assert (DragDrop::SetTarget (&window, true));
+  assert (DragDrop::SetTarget (&window, false) && GetPropW (handle, L"OleDropTargetInterface") == NULL);
+  assert (DragDrop::SetTarget (&window, false));
+  // A drag starts from a held button, and nothing is dragged without items
+  std::vector<ClipboardItem> dragged (1); dragged[0].format = CLIPBOARD_TEXT; dragged[0].text = "drag";
+  if (!(GetAsyncKeyState (VK_LBUTTON) & 0x8000)) assert (DragDrop::StartDrag (&window, dragged, NULL, 0, 0, DROP_ACTION_COPY, 1) == DROP_ACTION_NONE);
+  assert (DragDrop::StartDrag (&window, std::vector<ClipboardItem> (), NULL, 0, 0, DROP_ACTION_COPY, 1) == DROP_ACTION_NONE);
+  std::cout << "Drop target registration passed\n";
+ }
  DestroyWindow (handle); UnregisterClassW (type.lpszClassName, instance);
  {
   // The notification icon's messages carry the pointer's screen position in wParam
@@ -281,6 +297,22 @@ int main () {
   #endif
   assert (found);
   std::cout << "Storage volumes passed\n";
+ }
+ {
+  // The handler's answer is held to one action the source allows
+  DragEvent drag = { DRAG_OVER, 5, 10, 20, DROP_ACTION_MOVE | DROP_ACTION_LINK };
+  assert (DragDrop::Dispatch (drag, NULL) == DROP_ACTION_NONE);
+  DragDrop::SetHandler (DragAnswer, NULL);
+  assert (DragDrop::Dispatch (drag, NULL) == DROP_ACTION_MOVE && dragAsked == 1);
+  drag.allowedActions = DROP_ACTION_COPY;
+  assert (DragDrop::Dispatch (drag, NULL) == DROP_ACTION_COPY);
+  drag.allowedActions = DROP_ACTION_NONE;
+  assert (DragDrop::Dispatch (drag, NULL) == DROP_ACTION_NONE);
+  DragDrop::SetHandler (NULL, NULL);
+  Event completed;
+  DragDrop::PushComplete (9, DROP_ACTION_COPY);
+  assert (Menu::PollEvent (&completed) && completed.kind == DRAG_EVENT_COMPLETE && completed.target == 9 && completed.value == DROP_ACTION_COPY);
+  std::cout << "Drag dispatch passed\n";
  }
  std::cout << "Native menu decoding, ownership, event delivery and lifecycle passed\n";
 }
