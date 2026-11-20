@@ -5,6 +5,7 @@
 #endif
 #include <cassert>
 #include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <thread>
@@ -183,5 +184,35 @@ int main () {
   assert (process != GetCurrentProcessId ());
  }
 #endif
+ // Writing the clipboard replaces what the user copied, so it is only tested where asked
+ const char* testClipboard = getenv ("NATIVE_DESKTOP_TEST_CLIPBOARD");
+ if (testClipboard && testClipboard[0] == '1' && Clipboard::IsSupported ()) {
+  std::vector<ClipboardItem> clip (5);
+  clip[0].format = CLIPBOARD_TEXT; clip[0].text = "Caf\xc3\xa9 text";
+  clip[1].format = CLIPBOARD_HTML; clip[1].text = "<b>bold</b> caf\xc3\xa9";
+  clip[2].format = CLIPBOARD_RICH_TEXT; clip[2].text = "{\\rtf1\\ansi bold}";
+  clip[3].format = CLIPBOARD_FILE_LIST;
+  #ifdef _WIN32
+  clip[3].files.push_back ("C:\\Windows\\notepad.exe"); clip[3].files.push_back ("C:\\Windows\\caf\xc3\xa9.txt");
+  #else
+  clip[3].files.push_back ("/tmp/one.txt"); clip[3].files.push_back ("/tmp/caf\xc3\xa9.txt");
+  #endif
+  clip[4].format = CLIPBOARD_IMAGE; clip[4].width = 2; clip[4].height = 2;
+  unsigned char rgba[] = { 255, 0, 0, 255, 0, 255, 0, 128, 0, 0, 255, 255, 255, 255, 255, 0 };
+  clip[4].pixels.assign (rgba, rgba + 16);
+  assert (Clipboard::SetItems (clip));
+  std::string text; std::vector<std::string> files; std::vector<unsigned char> pixels; int width = 0, height = 0;
+  for (int i = 0; i < 10; ++i) Clipboard::Update ();
+  assert (Clipboard::HasFormat (CLIPBOARD_TEXT) && Clipboard::GetText (CLIPBOARD_TEXT, &text) && text == clip[0].text);
+  assert (Clipboard::HasFormat (CLIPBOARD_HTML) && Clipboard::GetText (CLIPBOARD_HTML, &text) && text == clip[1].text);
+  assert (Clipboard::HasFormat (CLIPBOARD_RICH_TEXT) && Clipboard::GetText (CLIPBOARD_RICH_TEXT, &text) && text == clip[2].text);
+  assert (Clipboard::HasFormat (CLIPBOARD_FILE_LIST) && Clipboard::GetFiles (&files) && files == clip[3].files);
+  assert (Clipboard::HasFormat (CLIPBOARD_IMAGE) && Clipboard::GetImage (&pixels, &width, &height) && width == 2 && height == 2);
+  // The pixel that is fully transparent may lose its color on the way
+  assert (memcmp (&pixels[0], rgba, 12) == 0 && pixels[15] == 0);
+  std::vector<ClipboardItem> url (1); url[0].format = CLIPBOARD_URL; url[0].text = "https://example.com/caf%C3%A9";
+  assert (Clipboard::SetItems (url) && Clipboard::GetText (CLIPBOARD_URL, &text) && text == url[0].text && !Clipboard::HasFormat (CLIPBOARD_HTML));
+  std::cout << "Clipboard formats passed\n";
+ }
  std::cout << "Native menu decoding, ownership, event delivery and lifecycle passed\n";
 }

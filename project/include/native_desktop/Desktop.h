@@ -19,6 +19,7 @@
 // Hosts can check for features newer than 1.1.0
 #define NATIVE_DESKTOP_MENU_OPEN_EVENTS 1
 #define NATIVE_DESKTOP_TRAY_ICON_MOUSE_EVENTS 1
+#define NATIVE_DESKTOP_CLIPBOARD 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
@@ -141,6 +142,33 @@ class TrayIcon {
  static void Update ();
  int id;
  void* platform;
+};
+// Clipboard formats beyond the text hosts already read. Text, HTML, rich text and URLs are UTF-8 (rich text
+// is RTF, which is ASCII), file lists are native paths in UTF-8, and images are 32-bit RGBA, top row first,
+// with straight alpha.
+enum ClipboardFormat {
+ CLIPBOARD_TEXT = 0, CLIPBOARD_HTML = 1, CLIPBOARD_RICH_TEXT = 2, CLIPBOARD_URL = 3, CLIPBOARD_FILE_LIST = 4, CLIPBOARD_IMAGE = 5
+};
+struct ClipboardItem {
+ int format = CLIPBOARD_TEXT;
+ std::string text;
+ std::vector<std::string> files;
+ std::vector<unsigned char> pixels;
+ int width = 0, height = 0;
+};
+class Clipboard {
+ public:
+ static bool IsSupported ();
+ static bool HasFormat (int format);
+ // HTML is the fragment that was copied, without the header Windows adds
+ static bool GetText (int format, std::string* text);
+ static bool GetFiles (std::vector<std::string>* files);
+ static bool GetImage (std::vector<unsigned char>* pixels, int* width, int* height);
+ // Replaces what the clipboard holds with these items, one for each format
+ static bool SetItems (const std::vector<ClipboardItem>& items);
+ // Linux serves other applications' requests for what was set from the owning UI thread, which calls this
+ // as it polls; elsewhere it does nothing
+ static void Update ();
 };
 class DockIcon {
  public:

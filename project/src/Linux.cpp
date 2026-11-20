@@ -560,6 +560,14 @@ namespace native_desktop {
 	}
 
 
+	// For the clipboard, which loads the rest of what it uses from the same libraries
+	bool LoadDesktopGTK () {
+
+		return LoadGTK ();
+
+	}
+
+
 	static void IterateMainContext () {
 
 		for (int i = 0; i < 64 && gtk.g_main_context_iteration (NULL, 0); i++) {}
