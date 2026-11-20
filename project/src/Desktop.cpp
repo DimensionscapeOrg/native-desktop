@@ -40,9 +40,9 @@ bool Menu::IsOwnerThread () {
  return true;
  #endif
 }
-static void Push (int kind, uint32_t target, int code, int value) {
+static void Push (int kind, uint32_t target, int code, int value, int x = 0, int y = 0) {
  if (!Menu::IsOwnerThread ()) return;
- Event event = {kind, target, code, value};
+ Event event = {kind, target, code, value, x, y};
  if (sink) sink (event, sinkData); else events.push_back (event);
 }
 void Menu::SetEventSink (EventSink value, void* data) { if (IsOwnerThread ()) { sink = value; sinkData = data; } }
@@ -53,6 +53,7 @@ bool Menu::PollEvent (Event* event) {
 void Menu::PushSelection (uint32_t window, int id) { Push (MENU_EVENT_SELECTION, window, id, 0); }
 void Menu::PushDockMenuSelection (int id) { Push (MENU_EVENT_DOCK_SELECTION, 0, id, 0); }
 void Menu::PushTrayIconEvent (int id, int type, int item) { Push (MENU_EVENT_TRAY_ICON, id, type, item); }
+void Menu::PushTrayIconMouseEvent (int id, int type, int button, int x, int y) { Push (MENU_EVENT_TRAY_ICON, id, type, button, x, y); }
 static OpenHandler openHandler = NULL;
 static void* openHandlerData = NULL;
 static bool inOpenHandler = false;
@@ -62,7 +63,7 @@ bool Menu::PushOpen (uint32_t target, int menu, int source, std::vector<unsigned
  // A handler that opens a menu itself does not hear about it
  if (!openHandler) { Push (MENU_EVENT_OPEN, target, menu, source); return false; }
  if (inOpenHandler || !items) return false;
- Event event = {MENU_EVENT_OPEN, target, menu, source};
+ Event event = {MENU_EVENT_OPEN, target, menu, source, 0, 0};
  items->clear ();
  inOpenHandler = true;
  bool result = false;
