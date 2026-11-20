@@ -73,6 +73,22 @@ bool Menu::PushOpen (uint32_t target, int menu, int source, std::vector<unsigned
  return result && !items->empty ();
 }
 void Menu::PushClose (uint32_t target, int menu, int source) { Push (MENU_EVENT_CLOSE, target, menu, source); }
+static DragHandler dragHandler = NULL;
+static void* dragHandlerData = NULL;
+void DragDrop::SetHandler (DragHandler handler, void* data) { if (Menu::IsOwnerThread ()) { dragHandler = handler; dragHandlerData = data; } }
+int DragDrop::Dispatch (const DragEvent& event, DragData* data) {
+ if (!Menu::IsOwnerThread () || !dragHandler) return DROP_ACTION_NONE;
+ int action = DROP_ACTION_NONE;
+ try { action = dragHandler (event, data, dragHandlerData); }
+ catch (...) { action = DROP_ACTION_NONE; }
+ // Only one of the actions the source allows
+ action &= event.allowedActions;
+ if (action & DROP_ACTION_COPY) return DROP_ACTION_COPY;
+ if (action & DROP_ACTION_MOVE) return DROP_ACTION_MOVE;
+ if (action & DROP_ACTION_LINK) return DROP_ACTION_LINK;
+ return DROP_ACTION_NONE;
+}
+void DragDrop::PushComplete (int id, int action) { Push (DRAG_EVENT_COMPLETE, (uint32_t)id, 0, action); }
 void Menu::SetKeyNameProvider (const char* (*provider)(int)) { if (IsOwnerThread ()) keyNameProvider = provider; }
 const char* Menu::KeyName (int key) {
  if (keyNameProvider) return keyNameProvider (key);

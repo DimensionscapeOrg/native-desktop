@@ -5,6 +5,7 @@
 // Clipboard formats for macOS, on the general NSPasteboard
 
 #import <Cocoa/Cocoa.h>
+#include "ClipboardMacFormats.h"
 
 
 namespace native_desktop {
@@ -34,11 +35,10 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::HasFormat (int format) {
+	bool MacPasteboardHasFormat (NSPasteboard* pasteboard, int format) {
 
 		@autoreleasepool {
 
-			NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 
 			if (format == CLIPBOARD_IMAGE) {
 
@@ -60,13 +60,12 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::GetText (int format, std::string* text) {
+	bool MacPasteboardGetText (NSPasteboard* pasteboard, int format, std::string* text) {
 
 		if (!text) return false;
 
 		@autoreleasepool {
 
-			NSPasteboard* pasteboard = [NSPasteboard generalPasteboard];
 			NSString* value = nil;
 
 			if (format == CLIPBOARD_URL) {
@@ -99,13 +98,13 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::GetFiles (std::vector<std::string>* files) {
+	bool MacPasteboardGetFiles (NSPasteboard* pasteboard, std::vector<std::string>* files) {
 
 		if (!files) return false;
 
 		@autoreleasepool {
 
-			NSArray* urls = [[NSPasteboard generalPasteboard] readObjectsForClasses:@[[NSURL class]] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
+			NSArray* urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:@{ NSPasteboardURLReadingFileURLsOnlyKey: @YES }];
 			if (!urls || [urls count] == 0) return false;
 
 			files->clear ();
@@ -126,13 +125,13 @@ namespace native_desktop {
 	}
 
 
-	bool Clipboard::GetImage (std::vector<unsigned char>* pixels, int* width, int* height) {
+	bool MacPasteboardGetImage (NSPasteboard* pasteboard, std::vector<unsigned char>* pixels, int* width, int* height) {
 
 		if (!pixels || !width || !height) return false;
 
 		@autoreleasepool {
 
-			NSArray* images = [[NSPasteboard generalPasteboard] readObjectsForClasses:@[[NSImage class]] options:nil];
+			NSArray* images = [pasteboard readObjectsForClasses:@[[NSImage class]] options:nil];
 			if (!images || [images count] == 0) return false;
 
 			NSImage* image = [images objectAtIndex:0];
@@ -172,6 +171,12 @@ namespace native_desktop {
 		}
 
 	}
+
+
+	bool Clipboard::HasFormat (int format) { return MacPasteboardHasFormat ([NSPasteboard generalPasteboard], format); }
+	bool Clipboard::GetText (int format, std::string* text) { return MacPasteboardGetText ([NSPasteboard generalPasteboard], format, text); }
+	bool Clipboard::GetFiles (std::vector<std::string>* files) { return MacPasteboardGetFiles ([NSPasteboard generalPasteboard], files); }
+	bool Clipboard::GetImage (std::vector<unsigned char>* pixels, int* width, int* height) { return MacPasteboardGetImage ([NSPasteboard generalPasteboard], pixels, width, height); }
 
 
 	bool Clipboard::SetItems (const std::vector<ClipboardItem>& items) {
