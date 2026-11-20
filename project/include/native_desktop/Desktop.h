@@ -21,6 +21,7 @@
 #define NATIVE_DESKTOP_TRAY_ICON_MOUSE_EVENTS 1
 #define NATIVE_DESKTOP_CLIPBOARD 1
 #define NATIVE_DESKTOP_WINDOW_CONTROL 1
+#define NATIVE_DESKTOP_TRASH 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
@@ -183,6 +184,15 @@ class WindowControl {
  static bool OrderBelow (Window* window, Window* other);
  static bool StartMove (Window* window);
  static bool StartResize (Window* window, int edges);
+};
+// Files and folders sent to the system's trash, from where the user can restore them. Unlike the rest of
+// this library, this may be called from any thread.
+class Trash {
+ public:
+ static bool IsSupported ();
+ // path is UTF-8. False when it does not exist, cannot be moved there, or the system would delete it
+ // outright instead, as for a volume without a trash.
+ static bool MoveToTrash (const char* path);
 };
 class DockIcon {
  public:

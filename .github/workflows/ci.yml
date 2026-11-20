@@ -18,6 +18,7 @@ jobs:
         # The runners have no one's clipboard to replace
         env:
           NATIVE_DESKTOP_TEST_CLIPBOARD: 1
+          NATIVE_DESKTOP_TEST_TRASH: 1
         run: |
           cmake -S . -B native-desktop-build -DBUILD_TESTING=ON
           cmake --build native-desktop-build --config Debug
