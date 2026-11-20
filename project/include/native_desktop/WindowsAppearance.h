@@ -11,5 +11,7 @@ namespace native_desktop {
 	void RefreshWindowsMenuAppearance (HWND window, bool dark);
 	void PrepareWindowsPopupAppearance (HWND window, HMENU menu, bool dark);
 	void ReleaseWindowsMenuAppearance (HMENU menu);
+	// Open and close events for a popup or tray menu that window is tracking
+	void HandleWindowsPopupNotification (HWND window, UINT message, WPARAM wParam, LPARAM lParam);
 }
 #endif

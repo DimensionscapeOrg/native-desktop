@@ -269,6 +269,7 @@ static LRESULT CALLBACK MenuAppearanceProc (HWND window, UINT message, WPARAM wP
 		RemovePropW (window, L"NativeDesktop.MenuAppearance");
 		RemoveWindowSubclass (window, MenuAppearanceProc, id);
 	}
+	HandleWindowsPopupNotification (window, message, wParam, lParam);
 	LRESULT result = DefSubclassProc (window, message, wParam, lParam);
 	if (message == WM_NCPAINT || message == WM_NCACTIVATE) PaintMenuBarBackground (window);
 	return result;

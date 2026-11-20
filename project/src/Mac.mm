@@ -30,6 +30,32 @@
 #endif
 
 
+// A menu that knows where it belongs, for its open and close events, and how its
+// items were made, so it can be built again as it opens
+@interface NativeDesktopMenu : NSMenu {
+
+	@public
+	int menuID;
+	int source;
+	uint32_t target;
+	SEL itemAction;
+	NSInteger tagBase;
+	BOOL reportsEvents;
+
+}
+
+@end
+
+
+@implementation NativeDesktopMenu
+@end
+
+
+namespace native_desktop {
+	void RebuildMacMenu (NativeDesktopMenu* menu, const std::vector<unsigned char>& data);
+}
+
+
 @interface NativeDesktopMenuTarget : NSObject <NSMenuDelegate, NSApplicationDelegate> {
 
 	@public
@@ -60,9 +86,24 @@
 		[[NSRunLoop currentRunLoop] addTimer:idleTimer forMode:NSEventTrackingRunLoopMode];
 	}
 }
+- (void)menuNeedsUpdate:(NSMenu*)menu {
+	if (![menu isKindOfClass:[NativeDesktopMenu class]]) return;
+	NativeDesktopMenu* desktopMenu = (NativeDesktopMenu*)menu;
+	if (!desktopMenu->reportsEvents) return;
+	// The menu bar is also asked before a key equivalent is matched, which does not open it
+	NSEvent* event = [NSApp currentEvent];
+	if (desktopMenu->source == native_desktop::MENU_SOURCE_APPLICATION && trackingDepth == 0 && event && [event type] == NSEventTypeKeyDown) return;
+	std::vector<unsigned char> items;
+	if (native_desktop::Menu::PushOpen (desktopMenu->target, desktopMenu->menuID, desktopMenu->source, &items))
+		native_desktop::RebuildMacMenu (desktopMenu, items);
+}
 - (void)menuDidClose:(NSMenu*)menu {
-	if (trackingDepth > 0 && --trackingDepth == 0 && idleTimer) {
-		[idleTimer invalidate]; DESKTOP_RELEASE (idleTimer); idleTimer = nil;
+	NativeDesktopMenu* desktopMenu = [menu isKindOfClass:[NativeDesktopMenu class]] ? (NativeDesktopMenu*)menu : nil;
+	if (desktopMenu && desktopMenu->reportsEvents)
+		native_desktop::Menu::PushClose (desktopMenu->target, desktopMenu->menuID, desktopMenu->source);
+	if (trackingDepth > 0 && --trackingDepth == 0) {
+		if (idleTimer) { [idleTimer invalidate]; DESKTOP_RELEASE (idleTimer); idleTimer = nil; }
+		if (desktopMenu) native_desktop::Menu::PushClose (desktopMenu->target, native_desktop::MENU_TRACKING_ENDED, desktopMenu->source);
 	}
 }
 
@@ -351,12 +392,33 @@ namespace native_desktop {
 
 	static NSMenu* CreateMenu (NSString* title) {
 
-		NSMenu* menu = DESKTOP_AUTORELEASE ([[NSMenu alloc] initWithTitle:title]);
+		NativeDesktopMenu* menu = DESKTOP_AUTORELEASE ([[NativeDesktopMenu alloc] initWithTitle:title]);
+		menu->menuID = 0;
+		menu->source = MENU_SOURCE_WINDOW;
+		menu->target = 0;
+		menu->itemAction = NULL;
+		menu->tagBase = 0;
+		menu->reportsEvents = NO;
 
 		// Use the supplied enabled state rather than the responder chain.
 		[menu setAutoenablesItems:NO];
 		[menu setDelegate:GetMenuTarget ()];
 
+		return menu;
+
+	}
+
+
+	// Gives a menu made by CreateMenu its place, for its events and for building it again
+	static NSMenu* SetMenuContext (NSMenu* menu, int source, uint32_t target, int menuID, SEL action, NSInteger tagBase, bool reportsEvents) {
+
+		NativeDesktopMenu* desktopMenu = (NativeDesktopMenu*)menu;
+		desktopMenu->menuID = menuID;
+		desktopMenu->source = source;
+		desktopMenu->target = target;
+		desktopMenu->itemAction = action;
+		desktopMenu->tagBase = tagBase;
+		desktopMenu->reportsEvents = reportsEvents ? YES : NO;
 		return menu;
 
 	}
@@ -409,6 +471,15 @@ namespace native_desktop {
 			if (hasSubmenu && !movedServices) {
 
 				NSMenu* submenu = CreateMenu (title);
+
+				// Submenus belong where their menu does, and each reports its own events
+				if ([menu isKindOfClass:[NativeDesktopMenu class]]) {
+
+					NativeDesktopMenu* parent = (NativeDesktopMenu*)menu;
+					SetMenuContext (submenu, parent->source, parent->target, item.id, action, tagBase, true);
+
+				}
+
 				AppendMenuItems (submenu, item.submenu, action, tagBase);
 				[menuItem setSubmenu:submenu];
 
@@ -421,6 +492,18 @@ namespace native_desktop {
 			[menu addItem:menuItem];
 
 		}
+
+	}
+
+
+	// AppKit lets the delegate change a menu's items in menuNeedsUpdate:, before it is shown
+	void RebuildMacMenu (NativeDesktopMenu* menu, const std::vector<unsigned char>& data) {
+
+		std::vector<MenuItem> items;
+		if (!Menu::Parse (&data[0], (int)data.size (), &items)) return;
+
+		[menu removeAllItems];
+		AppendMenuItems (menu, items, menu->itemAction, menu->tagBase);
 
 	}
 
@@ -444,7 +527,7 @@ namespace native_desktop {
 			if (!nsWindow || !Parse (data, length, &items)) return 0;
 
 			NativeDesktopMenuTarget* target = GetMenuTarget ();
-			NSMenu* menu = CreateMenu (@"");
+			NSMenu* menu = SetMenuContext (CreateMenu (@""), MENU_SOURCE_WINDOW, window->id, 0, @selector(selectPopupMenuItem:), 0, true);
 			AppendMenuItems (menu, items, @selector(selectPopupMenuItem:), 0);
 
 			NSView* view = [nsWindow contentView];
@@ -514,7 +597,8 @@ namespace native_desktop {
 
 			if (!Parse (data, length, &items)) return false;
 
-			NSMenu* menu = CreateMenu (@"MainMenu");
+			// The menu bar itself does not open, its menus do
+			NSMenu* menu = SetMenuContext (CreateMenu (@"MainMenu"), MENU_SOURCE_APPLICATION, 0, 0, @selector(selectApplicationMenuItem:), 0, false);
 			AppendMenuItems (menu, items, @selector(selectApplicationMenuItem:), 0);
 
 			[NSApp setMainMenu:menu];
@@ -741,7 +825,7 @@ namespace native_desktop {
 			if (!Menu::Parse (data, length, &items)) return 0;
 
 			NativeDesktopMenuTarget* target = GetMenuTarget ();
-			NSMenu* menu = CreateMenu (@"");
+			NSMenu* menu = SetMenuContext (CreateMenu (@""), MENU_SOURCE_TRAY_ICON, id, 0, @selector(selectPopupMenuItem:), 0, true);
 			AppendMenuItems (menu, items, @selector(selectPopupMenuItem:), 0);
 
 			NSStatusBarButton* button = [GetStatusItem (this) button];
@@ -794,7 +878,7 @@ namespace native_desktop {
 
 			}
 
-			NSMenu* menu = CreateMenu (@"");
+			NSMenu* menu = SetMenuContext (CreateMenu (@""), MENU_SOURCE_TRAY_ICON, id, 0, @selector(selectTrayIconMenuItem:), (NSInteger)id << 32, true);
 			AppendMenuItems (menu, items, @selector(selectTrayIconMenuItem:), (NSInteger)id << 32);
 
 			[statusItem setMenu:menu];
@@ -913,7 +997,7 @@ namespace native_desktop {
 
 				if (!Menu::Parse (data, length, &items) || !InstallDockMenuHandler ()) return false;
 
-				menu = CreateMenu (@"");
+				menu = SetMenuContext (CreateMenu (@""), MENU_SOURCE_DOCK, 0, 0, @selector(selectDockMenuItem:), 0, true);
 				AppendMenuItems (menu, items, @selector(selectDockMenuItem:), 0);
 
 			}
