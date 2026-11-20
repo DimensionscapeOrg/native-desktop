@@ -1020,7 +1020,7 @@ namespace native_desktop {
 
 		while (x.XPending (display) > 0) {
 
-			Event event;
+			xdnd::Event event;
 			x.XNextEvent (display, &event);
 
 			switch (event.type) {
