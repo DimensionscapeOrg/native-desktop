@@ -99,6 +99,7 @@ void DockIcon::SetIcon (Image*) {}
 bool DockIcon::SetMenu (const unsigned char*, int) { return false; }
 #endif
 #if !defined(NATIVE_DESKTOP_WINDOWS) && !defined(NATIVE_DESKTOP_MAC) && !defined(NATIVE_DESKTOP_LINUX)
+bool StorageVolumes::GetVolumes (std::vector<StorageVolume>*) { return false; }
 bool Trash::IsSupported () { return false; }
 bool Trash::MoveToTrash (const char*) { return false; }
 bool WindowControl::OrderToBack (Window*) { return false; }
