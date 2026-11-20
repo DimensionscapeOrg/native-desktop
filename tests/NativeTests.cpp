@@ -157,6 +157,27 @@ int main () {
  assert (!GetPropW (handle, L"NativeDesktop.DarkMenus"));
  SendMessageW (handle, WM_COMMAND, MAKEWPARAM (0x1000 + 2, 0), 0);
  assert (!Menu::PollEvent (&event));
+ {
+  // Stacking: each window goes just above or below the other, or to the back
+  HWND second = CreateWindowExW (0, type.lpszClassName, L"", WS_OVERLAPPEDWINDOW, 40, 40, 320, 200, NULL, NULL, instance, NULL);
+  assert (second);
+  ShowWindow (handle, SW_SHOWNOACTIVATE); ShowWindow (second, SW_SHOWNOACTIVATE);
+  Window first; first.handle = handle; first.id = 77;
+  Window other; other.handle = second; other.id = 78;
+  assert (WindowControl::OrderBelow (&first, &other) && GetWindow (second, GW_HWNDNEXT) == handle);
+  assert (WindowControl::OrderAbove (&first, &other) && GetWindow (handle, GW_HWNDNEXT) == second);
+  // Hidden system windows may stay below the back, so the other window is checked to be above it
+  assert (WindowControl::OrderToBack (&first));
+  bool secondAbove = false;
+  for (HWND next = GetWindow (second, GW_HWNDNEXT); next; next = GetWindow (next, GW_HWNDNEXT)) if (next == handle) secondAbove = true;
+  assert (secondAbove);
+  assert (!WindowControl::OrderAbove (&first, &first));
+  // Without the button held there is nothing to follow
+  if (!(GetAsyncKeyState (VK_LBUTTON) & 0x8000)) assert (!WindowControl::StartMove (&first) && !WindowControl::StartResize (&first, WINDOW_EDGE_RIGHT));
+  assert (!WindowControl::StartResize (&first, 0));
+  ShowWindow (handle, SW_HIDE);
+  DestroyWindow (second);
+ }
  DestroyWindow (handle); UnregisterClassW (type.lpszClassName, instance);
  {
   // The notification icon's messages carry the pointer's screen position in wParam

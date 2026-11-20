@@ -99,6 +99,11 @@ void DockIcon::SetIcon (Image*) {}
 bool DockIcon::SetMenu (const unsigned char*, int) { return false; }
 #endif
 #if !defined(NATIVE_DESKTOP_WINDOWS) && !defined(NATIVE_DESKTOP_MAC) && !defined(NATIVE_DESKTOP_LINUX)
+bool WindowControl::OrderToBack (Window*) { return false; }
+bool WindowControl::OrderAbove (Window*, Window*) { return false; }
+bool WindowControl::OrderBelow (Window*, Window*) { return false; }
+bool WindowControl::StartMove (Window*) { return false; }
+bool WindowControl::StartResize (Window*, int) { return false; }
 bool Clipboard::IsSupported () { return false; }
 bool Clipboard::HasFormat (int) { return false; }
 bool Clipboard::GetText (int, std::string*) { return false; }
