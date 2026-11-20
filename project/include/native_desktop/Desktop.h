@@ -22,6 +22,7 @@
 #define NATIVE_DESKTOP_CLIPBOARD 1
 #define NATIVE_DESKTOP_WINDOW_CONTROL 1
 #define NATIVE_DESKTOP_TRASH 1
+#define NATIVE_DESKTOP_STORAGE_VOLUMES 1
 
 namespace native_desktop {
 enum MenuSupport { MENU_SUPPORT_POPUP = 1, MENU_SUPPORT_WINDOW = 2, MENU_SUPPORT_APPLICATION = 4 };
@@ -193,6 +194,20 @@ class Trash {
  // path is UTF-8. False when it does not exist, cannot be moved there, or the system would delete it
  // outright instead, as for a volume without a trash.
  static bool MoveToTrash (const char* path);
+};
+// A mounted drive, partition or network share. Paths and names are UTF-8.
+struct StorageVolume {
+ std::string rootDirectory;  // where its files start, as C:\ or /media/user/USB
+ std::string name;           // its label, or the drive or mount point when it has none
+ std::string fileSystemType; // as NTFS, apfs or ext4
+ std::string drive;          // the drive letter on Windows, as C, and empty elsewhere
+ bool isRemovable = false;
+ bool isWritable = false;
+};
+class StorageVolumes {
+ public:
+ // Any thread may call this. Hosts compare lists to see volumes mount and unmount.
+ static bool GetVolumes (std::vector<StorageVolume>* volumes);
 };
 class DockIcon {
  public:

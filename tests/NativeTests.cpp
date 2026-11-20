@@ -261,5 +261,26 @@ int main () {
   assert (!Trash::MoveToTrash (path.c_str ()) && !Trash::MoveToTrash ("") && !Trash::MoveToTrash (NULL));
   std::cout << "Moving to the trash passed\n";
  }
+ {
+  // The volume the tests run from is listed, with the details of a mounted volume
+  std::vector<StorageVolume> volumes;
+  assert (StorageVolumes::GetVolumes (&volumes) && !volumes.empty ());
+  bool found = false;
+  for (size_t i = 0; i < volumes.size (); ++i) {
+   assert (!volumes[i].rootDirectory.empty () && !volumes[i].name.empty ());
+   #ifdef _WIN32
+   assert (volumes[i].drive.size () == 1 && volumes[i].rootDirectory == volumes[i].drive + ":\\");
+   char system[MAX_PATH]; GetWindowsDirectoryA (system, MAX_PATH);
+   if (volumes[i].drive[0] == system[0]) { found = true; assert (volumes[i].isWritable && !volumes[i].fileSystemType.empty ()); }
+   #else
+   if (volumes[i].rootDirectory == "/") { found = true; assert (!volumes[i].fileSystemType.empty ()); }
+   #endif
+  }
+  #ifdef __APPLE__
+  found = true;
+  #endif
+  assert (found);
+  std::cout << "Storage volumes passed\n";
+ }
  std::cout << "Native menu decoding, ownership, event delivery and lifecycle passed\n";
 }

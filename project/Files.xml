@@ -6,6 +6,7 @@
   <file name="${this_dir}/src/ClipboardWindows.cpp"/>
   <file name="${this_dir}/src/Desktop.cpp"/>
   <file name="${this_dir}/src/MenuData.cpp"/>
+  <file name="${this_dir}/src/StorageVolumes.cpp"/>
   <file name="${this_dir}/src/Trash.cpp"/>
   <file name="${this_dir}/src/Windows.cpp"/>
   <file name="${this_dir}/src/WindowControlLinux.cpp"/>
@@ -14,6 +15,7 @@
   <file name="${this_dir}/src/Linux.cpp"/>
   <file name="${this_dir}/src/ClipboardMac.mm" if="mac||macos"/>
   <file name="${this_dir}/src/Mac.mm" if="mac||macos"/>
+  <file name="${this_dir}/src/StorageVolumesMac.mm" if="mac||macos"/>
   <file name="${this_dir}/src/TrashMac.mm" if="mac||macos"/>
   <file name="${this_dir}/src/WindowControlMac.mm" if="mac||macos"/>
   <depend name="${this_dir}/include/native_desktop/Desktop.h"/>
