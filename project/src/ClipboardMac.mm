@@ -112,7 +112,9 @@ namespace native_desktop {
 
 			for (NSURL* url in urls) {
 
-				const char* path = [[url path] fileSystemRepresentation];
+				// As UTF-8, as the paths were given and as other platforms give them, rather than the decomposed
+				// form of fileSystemRepresentation, which macOS opens just the same
+				const char* path = [[url path] UTF8String];
 				if (path) files->push_back (path);
 
 			}
