@@ -179,6 +179,8 @@ enum WindowEdge { WINDOW_EDGE_TOP = 1, WINDOW_EDGE_BOTTOM = 2, WINDOW_EDGE_LEFT 
 // Stacking, moving and resizing a borrowed window, which SDL has no calls for. StartMove and StartResize
 // are called while the left button is down, as from its mouse down event, and follow the pointer until the
 // button is released; Windows and macOS return then, while X11's window manager carries on by itself.
+// Stacking: false when the system did not order the window. On macOS a window that is hidden or minimised
+// is not ordered, nor ordered against one that is, as AppKit would put it on screen.
 class WindowControl {
  public:
  static bool OrderToBack (Window* window);
