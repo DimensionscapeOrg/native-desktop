@@ -97,7 +97,8 @@ The native tests check menu-data encoding and validation, thread ownership,
 command delivery, modal host progress and tray cleanup. Windows tests also
 exercise appearance, accessibility, boundary rendering and GDI resource cleanup.
 macOS tests read a default menu bar, install a copy with a menu of the
-application's own, choose Hide and restore the original bar. The Haxe tests check
+application's own, choose Hide and restore the original bar, and stack shown
+windows while leaving hidden ones hidden. The Haxe tests check
 encoding, decoding, menu validation, callback delivery, callback errors and
 idempotent close, and on macOS read the installed menu bar back.
 

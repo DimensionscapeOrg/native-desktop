@@ -17,6 +17,15 @@ namespace native_desktop {
 	}
 
 
+	// AppKit puts a window on screen to order it, so a hidden or minimised window would be shown, while its host
+	// still takes it for hidden. Neither is ordered, nor is a window ordered against one that isn't on screen.
+	static bool IsOnScreen (NSWindow* window) {
+
+		return window && [window isVisible] && ![window isMiniaturized];
+
+	}
+
+
 	// Follows the pointer until the left button is released, as AppKit's own loops do. performWindowDragWithEvent:
 	// would need the mouse down event itself, which the host has already handled, and there is no call for resizing.
 	static bool TrackDrag (NSWindow* window, int edges) {
@@ -83,7 +92,7 @@ namespace native_desktop {
 	bool WindowControl::OrderToBack (Window* window) {
 
 		NSWindow* nsWindow = GetControlledWindow (window);
-		if (!nsWindow) return false;
+		if (!IsOnScreen (nsWindow)) return false;
 
 		[nsWindow orderBack:nil];
 		return true;
@@ -95,7 +104,7 @@ namespace native_desktop {
 
 		NSWindow* nsWindow = GetControlledWindow (window);
 		NSWindow* otherWindow = GetControlledWindow (other);
-		if (!nsWindow || !otherWindow || nsWindow == otherWindow) return false;
+		if (!IsOnScreen (nsWindow) || !IsOnScreen (otherWindow) || nsWindow == otherWindow) return false;
 
 		[nsWindow orderWindow:NSWindowAbove relativeTo:[otherWindow windowNumber]];
 		return true;
@@ -107,7 +116,7 @@ namespace native_desktop {
 
 		NSWindow* nsWindow = GetControlledWindow (window);
 		NSWindow* otherWindow = GetControlledWindow (other);
-		if (!nsWindow || !otherWindow || nsWindow == otherWindow) return false;
+		if (!IsOnScreen (nsWindow) || !IsOnScreen (otherWindow) || nsWindow == otherWindow) return false;
 
 		[nsWindow orderWindow:NSWindowBelow relativeTo:[otherWindow windowNumber]];
 		return true;
