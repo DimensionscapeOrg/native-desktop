@@ -1,11 +1,11 @@
 {
  "name": "native-desktop",
- "version": "1.2.1",
+ "version": "1.2.2",
  "url": "https://github.com/DimensionscapeOrg/native-desktop",
  "license": "MIT",
  "classPath": "src",
  "contributors": ["Dimensionscape"],
  "description": "Native desktop menus, tray icons, clipboard formats, drag and drop, and window, trash and volume access, independent of application and rendering frameworks.",
  "tags": ["native", "desktop", "menu", "tray", "cpp"],
- "releasenote": "On macOS, a hidden or minimised window is no longer ordered, nor a window ordered against one, as AppKit showed it to order it."
+ "releasenote": "On macOS, a drop target's window keeps its class, so SDL and other hosts can remove their observers of it, and closing it no longer ends the application."
 }
