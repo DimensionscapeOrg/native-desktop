@@ -2,14 +2,17 @@
 
 #ifdef NATIVE_DESKTOP_MAC
 
-// Drag and drop on macOS. The host's window, which already takes file drags, is given a subclass made at run
-// time, as Key-Value Observing does, whose dragging destination methods come here while it is a target and go
-// to the window's own class otherwise. Drags out begin a dragging session from the window's content view.
+// Drag and drop on macOS. The dragging destination methods of the host's window class, which already takes
+// file drags, are replaced by ones that come here for the windows that are targets and go to the class's own
+// for the others. The window keeps its class: Key-Value Observing, which SDL uses on its windows, keeps
+// observers by class, and those of a window given another class can't be removed. Drags out begin a dragging
+// session from the window's content view.
 
 #import <Cocoa/Cocoa.h>
 #import <objc/runtime.h>
 #include "ClipboardMacFormats.h"
 #include <map>
+#include <set>
 
 #if __has_feature(objc_arc)
 #define NATIVE_DESKTOP_RETAIN(object) (object)
@@ -24,6 +27,7 @@ namespace native_desktop {
 
 
 	static std::map<void*, uint32_t> targetWindows;
+	static std::set<void*> targetClasses;
 
 
 	class PasteboardDragData : public DragData {
@@ -112,102 +116,119 @@ namespace native_desktop {
 	}
 
 
-	// The window's own implementation, from the class the subclass was made from
-	template<typename Result> static Result CallSuper (id self, SEL selector, id info, Result fallback) {
-
-		Class superclass = class_getSuperclass (object_getClass (self));
-		if (!class_respondsToSelector (superclass, selector)) return fallback;
-
-		typedef Result (*Function) (id, SEL, id);
-		return ((Function)class_getMethodImplementation (superclass, selector)) (self, selector, info);
-
-	}
+	static NSDragOperation Entered (NSWindow* window, id<NSDraggingInfo> info) { return SendDrag (window, DRAG_ENTER, info); }
+	static NSDragOperation Updated (NSWindow* window, id<NSDraggingInfo> info) { return SendDrag (window, DRAG_OVER, info); }
+	static void Exited (NSWindow* window, id<NSDraggingInfo> info) { SendDrag (window, DRAG_LEAVE, info); }
+	static BOOL Prepare (NSWindow* window, id<NSDraggingInfo> info) { return YES; }
+	static BOOL Perform (NSWindow* window, id<NSDraggingInfo> info) { return SendDrag (window, DRAG_DROP, info) != NSDragOperationNone; }
+	static void Conclude (NSWindow* window, id<NSDraggingInfo> info) {}
 
 
-	static NSDragOperation DraggingEntered (id self, SEL selector, id<NSDraggingInfo> info) {
+	// The class's own implementation, or null when it inherits one
+	static IMP GetOwnImplementation (Class windowClass, SEL selector) {
 
-		if (!IsTarget (self)) return CallSuper<NSDragOperation> (self, selector, info, NSDragOperationNone);
-		return SendDrag ((NSWindow*)self, DRAG_ENTER, info);
-
-	}
-
-
-	static NSDragOperation DraggingUpdated (id self, SEL selector, id<NSDraggingInfo> info) {
-
-		if (!IsTarget (self)) return CallSuper<NSDragOperation> (self, selector, info, NSDragOperationNone);
-		return SendDrag ((NSWindow*)self, DRAG_OVER, info);
+		Method method = class_getInstanceMethod (windowClass, selector);
+		Class superclass = class_getSuperclass (windowClass);
+		if (!method || (superclass && class_getInstanceMethod (superclass, selector) == method)) return NULL;
+		return method_getImplementation (method);
 
 	}
 
 
-	static void DraggingExited (id self, SEL selector, id<NSDraggingInfo> info) {
+	// What the class does for windows that aren't targets: its own implementation, or the one it inherits,
+	// looked up as it is called, as a call to super is
+	static IMP GetOriginal (Class windowClass, SEL selector, IMP own) {
 
-		if (!IsTarget (self)) {
+		if (own) return own;
+		Class superclass = class_getSuperclass (windowClass);
+		return superclass && class_respondsToSelector (superclass, selector) ? class_getMethodImplementation (superclass, selector) : NULL;
 
-			Class superclass = class_getSuperclass (object_getClass (self));
-			if (class_respondsToSelector (superclass, selector)) ((void (*) (id, SEL, id))class_getMethodImplementation (superclass, selector)) (self, selector, info);
-			return;
+	}
+
+
+	static void SetImplementation (Class windowClass, SEL selector, IMP own, id block) {
+
+		IMP implementation = imp_implementationWithBlock (block);
+
+		if (own) {
+
+			method_setImplementation (class_getInstanceMethod (windowClass, selector), implementation);
+
+		} else {
+
+			struct objc_method_description description = protocol_getMethodDescription (@protocol (NSDraggingDestination), selector, NO, YES);
+			class_addMethod (windowClass, selector, implementation, description.types);
 
 		}
 
-		SendDrag ((NSWindow*)self, DRAG_LEAVE, info);
+	}
+
+
+	// Each replacement knows the class it was made for, so a class that calls up to its own class's method,
+	// itself replaced, goes on from there
+	template<typename Result> static void Replace (Class windowClass, SEL selector, Result (*target) (NSWindow*, id<NSDraggingInfo>), Result fallback) {
+
+		IMP own = GetOwnImplementation (windowClass, selector);
+
+		SetImplementation (windowClass, selector, own, ^Result (id window, id<NSDraggingInfo> info) {
+
+			if (IsTarget (window)) return target ((NSWindow*)window, info);
+			IMP original = GetOriginal (windowClass, selector, own);
+			return original ? ((Result (*) (id, SEL, id))original) (window, selector, info) : fallback;
+
+		});
 
 	}
 
 
-	static BOOL PrepareForDragOperation (id self, SEL selector, id<NSDraggingInfo> info) {
+	static void Replace (Class windowClass, SEL selector, void (*target) (NSWindow*, id<NSDraggingInfo>)) {
 
-		if (!IsTarget (self)) return CallSuper<BOOL> (self, selector, info, YES);
-		return YES;
+		IMP own = GetOwnImplementation (windowClass, selector);
 
-	}
+		SetImplementation (windowClass, selector, own, ^(id window, id<NSDraggingInfo> info) {
 
+			if (IsTarget (window)) {
 
-	static BOOL PerformDragOperation (id self, SEL selector, id<NSDraggingInfo> info) {
+				target ((NSWindow*)window, info);
+				return;
 
-		if (!IsTarget (self)) return CallSuper<BOOL> (self, selector, info, NO);
-		return SendDrag ((NSWindow*)self, DRAG_DROP, info) != NSDragOperationNone;
+			}
 
-	}
+			IMP original = GetOriginal (windowClass, selector, own);
+			if (original) ((void (*) (id, SEL, id))original) (window, selector, info);
 
-
-	static void ConcludeDragOperation (id self, SEL selector, id<NSDraggingInfo> info) {
-
-		if (IsTarget (self)) return;
-
-		Class superclass = class_getSuperclass (object_getClass (self));
-		if (class_respondsToSelector (superclass, selector)) ((void (*) (id, SEL, id))class_getMethodImplementation (superclass, selector)) (self, selector, info);
+		});
 
 	}
 
 
-	static void AddMethod (Class target, SEL selector, IMP implementation) {
+	// The class the window was made with, under any that Key-Value Observing made for it
+	static Class GetWindowClass (NSWindow* window) {
 
-		struct objc_method_description description = protocol_getMethodDescription (@protocol (NSDraggingDestination), selector, NO, YES);
-		class_addMethod (target, selector, implementation, description.types);
+		Class windowClass = [window class];
+
+		for (Class current = object_getClass (window); current; current = class_getSuperclass (current)) {
+
+			if (current == windowClass) return windowClass;
+
+		}
+
+		return object_getClass (window);
 
 	}
 
 
-	// One subclass for each window class it is made from, named after it
-	static Class GetTargetClass (Class original) {
+	// Once for each window class, whose windows that aren't targets go on as before
+	static void AddTargetMethods (Class windowClass) {
 
-		NSString* name = [NSString stringWithFormat:@"NativeDesktopDragTarget_%s", class_getName (original)];
-		Class existing = NSClassFromString (name);
-		if (existing) return existing;
+		if (!targetClasses.insert ((__bridge void*)windowClass).second) return;
 
-		Class subclass = objc_allocateClassPair (original, [name UTF8String], 0);
-		if (!subclass) return nil;
-
-		AddMethod (subclass, @selector (draggingEntered:), (IMP)DraggingEntered);
-		AddMethod (subclass, @selector (draggingUpdated:), (IMP)DraggingUpdated);
-		AddMethod (subclass, @selector (draggingExited:), (IMP)DraggingExited);
-		AddMethod (subclass, @selector (prepareForDragOperation:), (IMP)PrepareForDragOperation);
-		AddMethod (subclass, @selector (performDragOperation:), (IMP)PerformDragOperation);
-		AddMethod (subclass, @selector (concludeDragOperation:), (IMP)ConcludeDragOperation);
-
-		objc_registerClassPair (subclass);
-		return subclass;
+		Replace<NSDragOperation> (windowClass, @selector (draggingEntered:), Entered, NSDragOperationNone);
+		Replace<NSDragOperation> (windowClass, @selector (draggingUpdated:), Updated, NSDragOperationNone);
+		Replace (windowClass, @selector (draggingExited:), Exited);
+		Replace<BOOL> (windowClass, @selector (prepareForDragOperation:), Prepare, YES);
+		Replace<BOOL> (windowClass, @selector (performDragOperation:), Perform, NO);
+		Replace (windowClass, @selector (concludeDragOperation:), Conclude);
 
 	}
 
@@ -300,16 +321,7 @@ namespace native_desktop {
 
 			if (enabled) {
 
-				Class current = object_getClass (nsWindow);
-
-				if (![NSStringFromClass (current) hasPrefix:@"NativeDesktopDragTarget_"]) {
-
-					Class subclass = GetTargetClass (current);
-					if (!subclass) return false;
-					object_setClass (nsWindow, subclass);
-
-				}
-
+				AddTargetMethods (GetWindowClass (nsWindow));
 				targetWindows[window->handle] = window->id;
 				[nsWindow registerForDraggedTypes:GetDragTypes ()];
 
